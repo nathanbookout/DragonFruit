@@ -3236,6 +3236,17 @@ export function getKnotPlacementOnShaft(typeId: SupportTypeId): KnotPlacementOnS
     return KNOT_PLACEMENT_BY_TYPE.get(typeId) ?? null;
 }
 
+type TrunkEditObserver = (previous: Trunk, next: Trunk) => void;
+let trunkEditObserver: TrunkEditObserver | null = null;
+
+/**
+ * Observe edits to existing trunks (previous -> next), after the store has
+ * settled. Used by support symmetry to propagate an edit to mirrored siblings.
+ */
+export function setTrunkEditObserver(observer: TrunkEditObserver | null): void {
+    trunkEditObserver = observer;
+}
+
 /**
  * Apply an entity to its collection, then reposition the knots riding its
  * shafts and recompute the geometry those knots carry.
@@ -3257,7 +3268,8 @@ function applySupportEntityUpdate(
     const descriptor = getSupportTypeDescriptor(typeId);
     const key = descriptor.location.key;
 
-    if (!state[key][entity.id]) return;
+    const previousEntity = state[key][entity.id];
+    if (!previousEntity) return;
 
     let next = entity;
     if (descriptor.hasEditableSettings) {
@@ -3324,6 +3336,17 @@ function applySupportEntityUpdate(
         ...(settled ?? {}),
     });
     notify();
+
+    if (typeId === 'trunk' && trunkEditObserver) {
+        const nextTrunk = state.trunks[entity.id];
+        if (nextTrunk) {
+            try {
+                trunkEditObserver(previousEntity as Trunk, nextTrunk);
+            } catch (error) {
+                console.error('[SupportMirror] trunk edit propagation failed', error);
+            }
+        }
+    }
 }
 
 /**

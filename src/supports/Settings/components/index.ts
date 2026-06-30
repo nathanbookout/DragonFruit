@@ -5,6 +5,7 @@ export { ShaftSettingsCard } from './ShaftSettingsCard';
 export { RootsSettingsCard } from './RootsSettingsCard';
 export { BaseFlareSettingsCard } from './BaseFlareSettingsCard';
 export { GridSettingsCard } from './GridSettingsCard';
+export { SupportSymmetryCard } from './SupportSymmetryCard';
 export { RaftSettingsCard } from './RaftSettingsCard';
 export { SidebarPanelTabs } from './SidebarPanelTabs';
 

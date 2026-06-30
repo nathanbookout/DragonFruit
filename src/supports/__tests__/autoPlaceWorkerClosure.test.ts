@@ -41,6 +41,11 @@ const ALLOWED_SIDE_EFFECTS: Array<{ file: string; contains: string; reason: stri
         reason: 'fills a registry slot',
     },
     {
+        file: 'src/supports/mirroring/supportMirroring.ts',
+        contains: 'setTrunkEditObserver(',
+        reason: 'fills the trunk-edit observer slot in support state; touches no globals',
+    },
+    {
         file: 'src/supports/state.ts',
         contains: "registerCollectionRestore('",
         reason: 'fills a registry slot',

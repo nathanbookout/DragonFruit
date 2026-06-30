@@ -96,6 +96,7 @@ import { resolveTwigDiameterAtSegmentT } from './SupportTypes/Twig/twigTaper';
 import { bezierSegmentToBatchedShaft, braceBezierToBatchedShaft } from './Curves/batchedBezierShaft';
 import { isCurvedBatchedShaft } from './Curves/batchedBezierTubeGeometry';
 import { EMPTY_PLACEMENT_PREVIEWS, type SupportData, type SupportPlacementPreviews } from './rendering';
+import { getSymmetryPreviews, subscribeToSymmetryPreviews } from './mirroring/supportMirroring';
 import { useJointCreationState } from './SupportPrimitives/Joint/jointCreationState';
 import { subscribeToSettings, getSettingsSnapshot } from './Settings/state';
 import { emitSupportModelPointerHover, emitSupportModelPointerSelect, handleSupportClick } from './interaction/clickHandlers';
@@ -412,6 +413,7 @@ function buildPlacementPreviewBatches(
     hasSolidBottom: boolean,
     raftThickness: number,
     hidePlateContactPrimitives: boolean,
+    symmetryPreviews: readonly SupportData[] = [],
 ): PlacementPreviewBatch[] {
     const next: PlacementPreviewBatch[] = [];
 
@@ -441,6 +443,13 @@ function buildPlacementPreviewBatches(
         next.push(hidePlateContactPrimitives ? { ...batch, roots: [] } : batch);
     }
 
+    // Ghosts of the copies support symmetry would place alongside the live preview.
+    for (const preview of symmetryPreviews) {
+        const batch = buildSupportPlacementPreviewBatch(`placement-preview:symmetry:${preview.id}`, preview, hasSolidBottom, raftThickness);
+        if (!batch) continue;
+        next.push(hidePlateContactPrimitives ? { ...batch, roots: [] } : batch);
+    }
+
     return next;
 }
 
@@ -450,15 +459,17 @@ export function SupportPlacementPreviewLayer({
     placementPreviews = EMPTY_PLACEMENT_PREVIEWS,
 }: SupportPlacementPreviewLayerProps) {
     const raftSettings = useSyncExternalStore(subscribeToRaftStore, getRaftSettings, getRaftSettings);
+    const symmetryPreviews = useSyncExternalStore(subscribeToSymmetryPreviews, getSymmetryPreviews, getSymmetryPreviews);
     const { sproutParentingLockHeld, stage: leafStage } = useLeafPlacementState();
 
     const placementPreviewBatches = useMemo(() => {
         if (mode !== 'support') return [] as PlacementPreviewBatch[];
 
-        return buildPlacementPreviewBatches(placementPreviews, raftSettings.bottomMode === 'solid', raftSettings.thickness ?? 0, hidePlateContactPrimitives);
+        return buildPlacementPreviewBatches(placementPreviews, raftSettings.bottomMode === 'solid', raftSettings.thickness ?? 0, hidePlateContactPrimitives, symmetryPreviews);
     }, [
         mode,
         placementPreviews,
+        symmetryPreviews,
         raftSettings.bottomMode,
         raftSettings.thickness,
         hidePlateContactPrimitives,

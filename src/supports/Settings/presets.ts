@@ -195,6 +195,7 @@ const DETAIL_PRESET: SupportPreset = {
             attachSearchStepMm: 2.0,
             minRoutedTrunkAngleDeg: 60,
         },
+        symmetry: createDefaultSettings().symmetry,
         meshToMesh: {
             stickVsTwigCutoffMm: 5.0,
         },
@@ -288,6 +289,7 @@ const ANCHOR_PRESET: SupportPreset = {
             attachSearchStepMm: 2.0,
             minRoutedTrunkAngleDeg: 60,
         },
+        symmetry: createDefaultSettings().symmetry,
         meshToMesh: {
             stickVsTwigCutoffMm: 5.0,
         },

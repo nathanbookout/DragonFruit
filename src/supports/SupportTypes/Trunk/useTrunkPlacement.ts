@@ -8,7 +8,7 @@ import { buildTrunkData } from './trunkBuilder';
 import { computeAndApplySupportDiameterProfile } from './TrunkReplacement';
 import { supportDataForEntity, type SupportData } from '../../rendering/SupportBuilder';
 import { markPlacementSurface, markSupportDataPlacementSurface, type PlacementSurface } from '../../PlacementLogic/placementSurface';
-import type { LimitationCode, Segment, WarningCode } from '../../types';
+import type { LimitationCode, Roots, Segment, WarningCode } from '../../types';
 import { calculateSmoothedNormal } from '../../PlacementLogic/PlacementUtils';
 import { getSettings } from '../../Settings/state';
 import { decideGridPlacement } from '../../PlacementLogic/Grid';
@@ -16,6 +16,8 @@ import { cascadeExtras, getSupportTypeDescriptor, bridgeMayLandSideways, buildCo
 import { clearSupportSelection } from '../../interaction/shared/selection/selectionController';
 import { isContactDiskHudInteractionActive, shouldSuppressContactDiskHudPlacementCommit } from '../../SupportPrimitives/ContactDisk/contactDiskHudInteraction';
 import { perfMark, perfMeasureWithSpike, perfEndFrame } from '../../PlacementLogic/Pathfinding/pathfindingPerf';
+import { buildSymmetryPreviewCopies, meshModelSurface, setSymmetryPreviews, symmetrizePlacedEntity, symmetrizePlacedTrunk } from '../../mirroring/supportMirroring';
+import type { ModelSurface } from '../../mirroring/supportMirroring';
 
 import { isShaftBlocked } from '../../PlacementLogic/CollisionAvoidance';
 
@@ -275,6 +277,7 @@ export function useTrunkPlacementV2() {
         setPreviewError((prev) => (prev === null ? prev : null));
         setPreviewWarning((prev) => (prev === null ? prev : null));
         cavityPreviewCacheRef.current = null;
+        setSymmetryPreviews([]);
         // A click can leave the pointer exactly where it was after a commit. Cancel
         // the queued hover and forget its stored hit so that a scheduled frame
         // cannot rebuild the same preview before the pointer moves again.
@@ -289,7 +292,7 @@ export function useTrunkPlacementV2() {
         }
     }, []);
 
-    const commitTrunkBuild = useCallback((trunkBuild: ReturnType<typeof buildTrunkData>, placementSurface?: PlacementSurface) => {
+    const commitTrunkBuild = useCallback((trunkBuild: ReturnType<typeof buildTrunkData>, placementSurface?: PlacementSurface, modelSurface?: ModelSurface) => {
         const markedBuild = markTrunkBuildPlacementSurface(trunkBuild, placementSurface);
         // The action and the payload are both declared by the type, so neither
         // is written here. Resolved before the write: an unstamped trunk used to
@@ -301,6 +304,7 @@ export function useTrunkPlacementV2() {
             addRoot(markedBuild.root);
             addSupportEntityWithHistory(trunkTypeId, markedBuild.trunk);
         });
+        symmetrizePlacedTrunk(modelSurface, markedBuild.root, markedBuild.trunk);
         clearSupportSelection();
         clearPreview();
     }, [clearPreview]);
@@ -362,6 +366,7 @@ export function useTrunkPlacementV2() {
                 cancelAnimationFrame(hoverFrameRef.current);
                 hoverFrameRef.current = null;
             }
+            setSymmetryPreviews([]);
         };
     }, []);
 
@@ -436,6 +441,12 @@ export function useTrunkPlacementV2() {
         const isGridMode = Boolean(settings.grid?.enabled && settings.grid.spacingMm > 0);
 
         const mesh = hit.object instanceof THREE.Mesh ? hit.object : undefined;
+        const modelSurface = mesh ? meshModelSurface(mesh) : undefined;
+        // Every preview also ghosts the symmetry copies that a click would place.
+        const commitPreview = (data: SupportData | null) => {
+            setPreviewData(data);
+            setSymmetryPreviews(buildSymmetryPreviewCopies(modelSurface, data));
+        };
 
         perfMark('hover:trunk-build');
         // Grid mode routes like every other mode. It used to build a straight
@@ -466,7 +477,7 @@ export function useTrunkPlacementV2() {
                 const cavityBridge = resolveCavityBridgePreview(hit, tipPos, tipNormal, modelId, mesh);
                 perfMeasureWithSpike('hover:cavity-stick', 'branch:cavity-stick');
                 if (cavityBridge) {
-                    setPreviewData(cavityBridge.supportData);
+                    commitPreview(cavityBridge.supportData);
                     setPreviewError(null);
                     setPreviewWarning(null);
                     perfEndFrame();
@@ -475,7 +486,7 @@ export function useTrunkPlacementV2() {
             }
             // No cavity floor found — show the trunk error as fallback.
             if (result.stagnated || result.exhaustedBudget) {
-                setPreviewData(result.supportData);
+                commitPreview(result.supportData);
                 setPreviewError(forcePlaceOverrideRef.current ? null : (result.error || null));
                 setPreviewWarning(null);
                 perfEndFrame();
@@ -494,7 +505,7 @@ export function useTrunkPlacementV2() {
         const claimedType = selectTypeForPlacement('tipHeight', tipPos.z);
         const isOverriddenBand = !!claimedType && !!buildContactOverride(claimedType);
         if (!isGridMode && !isOverriddenBand) {
-            setPreviewData(result.supportData);
+            commitPreview(result.supportData);
             setPreviewError(forcePlaceOverrideRef.current ? null : (result.error || null));
             setPreviewWarning(result.warning || null);
             perfEndFrame();
@@ -506,7 +517,7 @@ export function useTrunkPlacementV2() {
         // stick alike.  Reject immediately instead of deferring to grid
         // placement which would offer branches as a fallback.
         if (result.error === 'ANGLE_TOO_STEEP') {
-            setPreviewData(result.supportData);
+            commitPreview(result.supportData);
             setPreviewError(forcePlaceOverrideRef.current ? null : result.error);
             setPreviewWarning(null);
             perfEndFrame();
@@ -533,7 +544,7 @@ export function useTrunkPlacementV2() {
             ? decision.supportData
             : decision.trunkBuild?.supportData;
         if (decision.kind !== 'reject' && previewData) {
-            setPreviewData(previewData);
+            commitPreview(previewData);
             setPreviewError(forcePlaceOverrideRef.current ? null : (previewData.error || null));
             setPreviewWarning(previewData.warning || null);
             perfEndFrame();
@@ -546,7 +557,7 @@ export function useTrunkPlacementV2() {
             const cavityBridge = resolveCavityBridgePreview(hit, tipPos, tipNormal, modelId, mesh);
             perfMeasureWithSpike('hover:cavity-stick', 'branch:cavity-stick');
             if (cavityBridge) {
-                setPreviewData(cavityBridge.supportData);
+                commitPreview(cavityBridge.supportData);
                 setPreviewError(null);
                 setPreviewWarning(null);
                 perfEndFrame();
@@ -558,7 +569,7 @@ export function useTrunkPlacementV2() {
         // the invalid support as a red ghost; the `error` on the SupportData
         // drives the "Cannot Place Support" tooltip.
         if (decision.kind === 'reject' && decision.supportData) {
-            setPreviewData(decision.supportData);
+            commitPreview(decision.supportData);
             setPreviewError(forcePlaceOverrideRef.current ? null : (decision.supportData.error ?? null));
             setPreviewWarning(null);
             perfEndFrame();
@@ -568,7 +579,7 @@ export function useTrunkPlacementV2() {
         // A rejection from the GRID engine still previews the trunk it built,
         // so the ghost and the reason stay available.
         if (decision.kind === 'reject' && decision.trunkBuild) {
-            setPreviewData(decision.trunkBuild.supportData);
+            commitPreview(decision.trunkBuild.supportData);
             setPreviewError(forcePlaceOverrideRef.current ? null : (decision.trunkBuild.error || null));
             setPreviewWarning(decision.trunkBuild.warning || null);
             perfEndFrame();
@@ -576,6 +587,7 @@ export function useTrunkPlacementV2() {
         }
 
         setPreviewData((prev) => (prev === null ? prev : null));
+        setSymmetryPreviews([]);
         setPreviewError(forcePlaceOverrideRef.current
             ? null
             : decision.kind === 'reject' && decision.reason === 'KNOT_ABOVE_TIP'
@@ -630,6 +642,7 @@ export function useTrunkPlacementV2() {
         // node when the grid is on, and the resolver below adopts that node
         // rather than re-deriving one from a straight drop.
         const mesh = hit.object instanceof THREE.Mesh ? hit.object : undefined;
+        const modelSurface = mesh ? meshModelSurface(mesh) : undefined;
         const result = buildTrunkData({ tipPos, tipNormal, modelId, mesh });
 
         // When the trunk can't route to the build plate (stagnation, budget
@@ -650,10 +663,9 @@ export function useTrunkPlacementV2() {
                 if (cavityBridge) {
                     // The registry chose the type; committing it needs no
                     // second choice here.
-                    addSupportEntityWithHistory(
-                        cavityBridge.kind,
-                        markPlacementSurface(cavityBridge.kind, cavityBridge.entity, placementSurface),
-                    );
+                    const bridgeEntity = markPlacementSurface(cavityBridge.kind, cavityBridge.entity, placementSurface);
+                    addSupportEntityWithHistory(cavityBridge.kind, bridgeEntity);
+                    symmetrizePlacedEntity(modelSurface, cavityBridge.kind, bridgeEntity);
                     clearSupportSelection();
                     clearPreview();
                     return;
@@ -662,7 +674,7 @@ export function useTrunkPlacementV2() {
             // No cavity floor found — for stagnation/budget, bail silently.
             // For other errors (collision), let the user force-place if desired.
             if (forcePlaceOverrideRef.current && (result.stagnated || result.exhaustedBudget || result.error)) {
-                commitTrunkBuild(result, placementSurface);
+                commitTrunkBuild(result, placementSurface, modelSurface);
             }
             return;
         }
@@ -673,7 +685,7 @@ export function useTrunkPlacementV2() {
         // placement which would offer branches as a fallback.
         if (result.error === 'ANGLE_TOO_STEEP') {
             if (forcePlaceOverrideRef.current) {
-                commitTrunkBuild(result, placementSurface);
+                commitTrunkBuild(result, placementSurface, modelSurface);
             }
             return;
         }
@@ -686,7 +698,7 @@ export function useTrunkPlacementV2() {
         // the grid or a type override, the trunk candidate is final.
         if (result.error && !settings.grid?.enabled && !isOverriddenBand) {
             if (forcePlaceOverrideRef.current) {
-                commitTrunkBuild(result, placementSurface);
+                commitTrunkBuild(result, placementSurface, modelSurface);
             }
             // Stick/twig is now strict last resort: do not fallback here unless
             // the solver reported true stagnation (handled above).
@@ -741,6 +753,11 @@ export function useTrunkPlacementV2() {
                     ...(hostRepair ?? {}),
                 });
             });
+            const suppliedRoot = descriptor.edges
+                .filter((edge) => edge.to === 'roots')
+                .map((edge) => supplied[edge.field])
+                .find(Boolean) as Roots | undefined;
+            symmetrizePlacedEntity(modelSurface, typeId, entity, suppliedRoot ?? null);
             clearSupportSelection();
             clearPreview();
             return;
@@ -751,17 +768,16 @@ export function useTrunkPlacementV2() {
                 if (cavityBridge) {
                     // The registry chose the type; committing it needs no
                     // second choice here.
-                    addSupportEntityWithHistory(
-                        cavityBridge.kind,
-                        markPlacementSurface(cavityBridge.kind, cavityBridge.entity, placementSurface),
-                    );
+                    const bridgeEntity = markPlacementSurface(cavityBridge.kind, cavityBridge.entity, placementSurface);
+                    addSupportEntityWithHistory(cavityBridge.kind, bridgeEntity);
+                    symmetrizePlacedEntity(modelSurface, cavityBridge.kind, bridgeEntity);
                     clearSupportSelection();
                     clearPreview();
                     return;
                 }
             }
             if (forcePlaceOverrideRef.current && decision.trunkBuild) {
-                commitTrunkBuild(decision.trunkBuild, placementSurface);
+                commitTrunkBuild(decision.trunkBuild, placementSurface, modelSurface);
             }
             // Stick/twig is now strict last resort: keep reject behavior here.
             return;

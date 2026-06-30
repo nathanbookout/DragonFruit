@@ -18,6 +18,7 @@ import {
     updateShaftProfile,
     updateRootsProfile,
     updateGridSettings,
+    updateSupportSymmetrySettings,
     updateAutoBracingSettings,
     updateAutoSupportSettings,
     updateDevToolsEnabled,
@@ -39,6 +40,7 @@ import {
     PresetSelector,
     RaftSettingsCard,
     GridSettingsCard,
+    SupportSymmetryCard,
     SidebarPanelTabs,
 } from './components';
 import { Card, CardHeader, IconButton, BlockingOverlay } from '@/components/atoms';
@@ -1287,6 +1289,9 @@ export function SupportSidebar({ activeModelId = null }: { activeModelId?: strin
                                                             grid: {
                                                                 ...current.grid,
                                                             },
+                                                            symmetry: {
+                                                                ...current.symmetry,
+                                                            },
                                                             tip: {
                                                                 ...preset.settings.tip,
                                                                 coneAngleMode: current.tip.coneAngleMode,
@@ -1310,6 +1315,13 @@ export function SupportSidebar({ activeModelId = null }: { activeModelId?: strin
                                                     }}
                                                 />
                                             </div>
+
+                                            <Section title={_(msg`Support Symmetry`)}>
+                                                <SupportSymmetryCard
+                                                    symmetry={settings.symmetry}
+                                                    onChange={(partial) => updateSupportSymmetrySettings(partial)}
+                                                />
+                                            </Section>
                                         </>
                                     ) : (
                                         <>
