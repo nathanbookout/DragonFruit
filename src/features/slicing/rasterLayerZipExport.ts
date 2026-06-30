@@ -321,17 +321,36 @@ class TriangleFloatCollector {
 
   private readonly offsetY: number;
 
+  /**
+   * Per-resin scale compensation factors (1 = no change). XY scales about the
+   * current origin (each part's own centre, set via setScaleOrigin) so parts do
+   * not drift across the plate; Z scales about the plate.
+   */
+  private readonly scaleX: number;
+
+  private readonly scaleY: number;
+
+  private readonly scaleZ: number;
+
+  private originX = 0;
+
+  private originY = 0;
+
   constructor(
     initialTriangleCapacity: number,
     flushCallback?: (chunk: Uint8Array) => Promise<void>,
     chunkTargetBytes?: number,
     plateOffsetMm?: { dxMm: number; dyMm: number },
+    scale: { x: number; y: number; z: number } = { x: 1, y: 1, z: 1 },
   ) {
     const safeTriangleCapacity = Math.max(1, Math.floor(initialTriangleCapacity));
     this.data = new Float32Array(safeTriangleCapacity * 9);
     this.flushCallback = flushCallback;
     this.offsetX = -(plateOffsetMm?.dxMm ?? 0);
     this.offsetY = -(plateOffsetMm?.dyMm ?? 0);
+    this.scaleX = scale.x;
+    this.scaleY = scale.y;
+    this.scaleZ = scale.z;
 
     if (flushCallback) {
       const normalizedChunkBytes = normalizeMeshChunkTargetBytes(chunkTargetBytes);
@@ -340,6 +359,12 @@ class TriangleFloatCollector {
         Math.floor(normalizedChunkBytes / Float32Array.BYTES_PER_ELEMENT),
       );
     }
+  }
+
+  /** World-space XY origin that subsequent triangles are scaled about. */
+  setScaleOrigin(originX: number, originY: number): void {
+    this.originX = originX;
+    this.originY = originY;
   }
 
   get triangleCount(): number {
@@ -374,6 +399,14 @@ class TriangleFloatCollector {
     tank = 0,
   ): void {
     this.ensureCapacity(9);
+    // Scale in world space (about the part's own centre) before the plate shift.
+    ax = this.originX + (ax - this.originX) * this.scaleX;
+    bx = this.originX + (bx - this.originX) * this.scaleX;
+    cx = this.originX + (cx - this.originX) * this.scaleX;
+    ay = this.originY + (ay - this.originY) * this.scaleY;
+    by = this.originY + (by - this.originY) * this.scaleY;
+    cy = this.originY + (cy - this.originY) * this.scaleY;
+    az *= this.scaleZ; bz *= this.scaleZ; cz *= this.scaleZ;
     ax += this.offsetX;
     ay += this.offsetY;
     bx += this.offsetX;
@@ -811,6 +844,8 @@ export function buildSupportAndRaftWorldTriangles(
   supportTipShrinkPercent = 0,
   /** Visible models, whose plate footprint the raft has to clear. */
   plateClearanceModels: readonly PlateFootprintSource[] = [],
+  /** World-space XY centre of each model, for per-part scale compensation. */
+  modelCentersById?: Map<string, { x: number; y: number }>,
 ): WorldTriangle[] {
   if (visibleModelIds.size === 0) return [];
 
@@ -818,6 +853,7 @@ export function buildSupportAndRaftWorldTriangles(
   const supportState = getSupportSnapshot();
   const sink: TriangleSink = collector ?? out;
   const tipScale = 1 - supportTipShrinkPercent / 100;
+  const applyScaleOrigin = createScaleOriginApplier(collector, modelCentersById);
   const raftSettings = getRaftSettings();
   const hasSolidBottom = raftSettings.bottomMode === 'solid';
   const raftThickness = raftSettings.thickness;
@@ -876,6 +912,7 @@ export function buildSupportAndRaftWorldTriangles(
     const rootVisibleByModel = visibleModelIds.has(root.modelId);
     const rootVisibleByLink = visibleRootIds.has(root.id);
     if (!rootVisibleByModel && !rootVisibleByLink) continue;
+    applyScaleOrigin(rootModelKeyById.get(root.id) ?? root.modelId);
 
     // Mirror proxy hasSolidBottom logic: collapse disk height and shift root up so it
     // sits flush on top of the solid raft rather than extending through it.
@@ -929,6 +966,7 @@ export function buildSupportAndRaftWorldTriangles(
     for (const entity of Object.values(collection ?? {})) {
       const modelId = entity.modelId as string | undefined;
       if (!modelId || !visibleModelIds.has(modelId)) continue;
+      applyScaleOrigin(modelId);
 
       // The hosts an endpoint kind needs. A type declaring neither still
       // resolves, because its segments carry both their own joints.
@@ -1046,8 +1084,9 @@ export function buildSupportAndRaftWorldTriangles(
     );
     const clearanceCut = inflateModelPlateClearance(clearance);
 
-    for (const circles of rootsByModel.values()) {
+    for (const [modelKey, circles] of rootsByModel.entries()) {
       if (circles.length === 0) continue;
+      applyScaleOrigin(modelKey);
 
       const parts = buildRaftFootprintMeshes({ circles, raft, clearance });
       if (!parts.baseMesh && parts.footprint.length === 0) continue;
@@ -2140,6 +2179,25 @@ export async function rasterizeLayersForWasm(options: RasterLayerZipExportOption
   };
 }
 
+function resolveScaleCompensationFactors(materialProfile: MaterialProfile): { x: number; y: number; z: number } {
+  const toFactor = (percent: number | undefined) => 1 + (Number(percent) || 0) / 100;
+  return {
+    x: toFactor(materialProfile.scaleCompensationPct?.x),
+    y: toFactor(materialProfile.scaleCompensationPct?.y),
+    z: toFactor(materialProfile.scaleCompensationPct?.z),
+  };
+}
+
+function createScaleOriginApplier(
+  collector: TriangleFloatCollector | undefined,
+  modelCentersById: Map<string, { x: number; y: number }> | undefined,
+): (modelId?: string) => void {
+  return (modelId?: string) => {
+    const center = modelId ? modelCentersById?.get(modelId) : undefined;
+    collector?.setScaleOrigin(center?.x ?? 0, center?.y ?? 0);
+  };
+}
+
 export async function buildSolidSliceMeshForWasm(options: RasterLayerZipExportOptions): Promise<SolidSliceMeshForWasm> {
   const visibleModels = options.models.filter((model) => model.visible);
   if (visibleModels.length === 0) {
@@ -2182,6 +2240,7 @@ export async function buildSolidSliceMeshForWasm(options: RasterLayerZipExportOp
     options.flushBinaryMeshChunk,
     options.meshChunkTargetBytes,
     options.plateOffsetMm,
+    resolveScaleCompensationFactors(options.materialProfile),
   );
 
   // A multi-tank printer prints a body from the tank its material sits in. The
@@ -2203,6 +2262,7 @@ export async function buildSolidSliceMeshForWasm(options: RasterLayerZipExportOp
   // Push model-only triangles first (across all models), then support-only.
   // This produces the same collector layout as manually splitting before slicing.
   for (const model of visibleModels) {
+    collector.setScaleOrigin(model.transform.position.x, model.transform.position.y);
     if (usesBodyTanks(model)) {
       model.splitBodies?.forEach((body, index) => {
         const materialId = model.bodyMaterialProfileIds?.[index] ?? model.materialProfileId;
@@ -2222,6 +2282,7 @@ export async function buildSolidSliceMeshForWasm(options: RasterLayerZipExportOp
     const totalTris = getModelTriangleCount(model);
     const modelTriCount = effectiveModelTriangleCount(model);
     if (modelTriCount < totalTris) {
+      collector.setScaleOrigin(model.transform.position.x, model.transform.position.y);
       appendModelTrianglesInRange(model, collector, modelTriCount, totalTris);
     }
   }
@@ -2231,7 +2292,17 @@ export async function buildSolidSliceMeshForWasm(options: RasterLayerZipExportOp
   });
 
   const visibleModelIds = new Set(visibleModels.map((model) => model.id));
-  buildSupportAndRaftWorldTriangles(visibleModelIds, collector, options.supportTipShrinkPercent ?? 0, visibleModels);
+  const modelCentersById = new Map(visibleModels.map((model) => [
+    model.id,
+    { x: model.transform.position.x, y: model.transform.position.y },
+  ]));
+  buildSupportAndRaftWorldTriangles(
+    visibleModelIds,
+    collector,
+    options.supportTipShrinkPercent ?? 0,
+    visibleModels,
+    modelCentersById,
+  );
   emitMeshPrepDiagnostic('Mesh prep: supports', 2, 4, {
     triangleCountAfterSupports: collector.triangleCount,
   });

@@ -1042,48 +1042,59 @@ export function MaterialProfileFormSections({ draft, onChange, printerProfiles, 
                 </div>
             </div>
 
-            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-2)' }}>
-                <div className="ui-meta font-semibold uppercase tracking-wide mb-2">
-                    Scale Compensation (% shrinkage)
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                    <LabeledNumberInput
-                        label="Scale X (%)"
-                        value={draft.scaleCompensationPct.x}
-                        onChange={(value) => onChange((prev) => ({
-                            ...prev,
-                            scaleCompensationPct: {
-                                ...prev.scaleCompensationPct,
-                                x: value,
-                            },
-                        }))}
-                    />
-                    <LabeledNumberInput
-                        label="Scale Y (%)"
-                        value={draft.scaleCompensationPct.y}
-                        onChange={(value) => onChange((prev) => ({
-                            ...prev,
-                            scaleCompensationPct: {
-                                ...prev.scaleCompensationPct,
-                                y: value,
-                            },
-                        }))}
-                    />
-                    <LabeledNumberInput
-                        label="Scale Z (%)"
-                        value={draft.scaleCompensationPct.z}
-                        onChange={(value) => onChange((prev) => ({
-                            ...prev,
-                            scaleCompensationPct: {
-                                ...prev.scaleCompensationPct,
-                                z: value,
-                            },
-                        }))}
-                    />
-                </div>
-            </div>
+            <MaterialScaleCompensationSection draft={draft} onChange={onChange} />
         </>
     );
+}
+
+type MaterialScaleCompensationSectionProps = {
+  draft: MaterialDraft;
+  onChange: React.Dispatch<React.SetStateAction<MaterialDraft>>;
+};
+
+export function MaterialScaleCompensationSection({ draft, onChange }: MaterialScaleCompensationSectionProps) {
+  return (
+    <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-2)' }}>
+      <div className="ui-meta font-semibold uppercase tracking-wide mb-2">
+        Scale Compensation (% shrinkage)
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <LabeledNumberInput
+          label="Scale X (%)"
+          value={draft.scaleCompensationPct.x}
+          onChange={(value) => onChange((prev) => ({
+            ...prev,
+            scaleCompensationPct: {
+              ...prev.scaleCompensationPct,
+              x: value,
+            },
+          }))}
+        />
+        <LabeledNumberInput
+          label="Scale Y (%)"
+          value={draft.scaleCompensationPct.y}
+          onChange={(value) => onChange((prev) => ({
+            ...prev,
+            scaleCompensationPct: {
+              ...prev.scaleCompensationPct,
+              y: value,
+            },
+          }))}
+        />
+        <LabeledNumberInput
+          label="Scale Z (%)"
+          value={draft.scaleCompensationPct.z}
+          onChange={(value) => onChange((prev) => ({
+            ...prev,
+            scaleCompensationPct: {
+              ...prev.scaleCompensationPct,
+              z: value,
+            },
+          }))}
+        />
+      </div>
+    </div>
+  );
 }
 
 type MaterialAntiAliasingSectionProps = {
