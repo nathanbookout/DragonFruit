@@ -17,6 +17,7 @@ import { isContactDiskHudInteractionActive, shouldSuppressContactDiskHudPlacemen
 import { perfMark, perfMeasureWithSpike, perfEndFrame } from '../../PlacementLogic/Pathfinding/pathfindingPerf';
 import { buildStick } from '../Stick/stickBuilder';
 import { buildTwig } from '../Twig/twigBuilder';
+import { buildSymmetryPreviewCopies, setSymmetryPreviews, symmetrizePlacedAnchor, symmetrizePlacedStick, symmetrizePlacedTrunk, symmetrizePlacedTwig } from '../../mirroring/supportMirroring';
 import { useHotkeyConfig } from '@/hotkeys/HotkeyContext';
 import { matchesConfiguredHotkeyDown, matchesConfiguredHotkeyUp } from '@/hotkeys/hotkeyConfig';
 import { getSupportPathfindingDebugEnabled, setSupportPathfindingDebugSnapshot } from '../../PlacementLogic/Pathfinding/pathfindingDebugState';
@@ -226,6 +227,7 @@ export function useTrunkPlacementV2() {
     const { isPlacementHardDisabled } = useInteractionStatus();
     const hoverFrameRef = useRef<number | null>(null);
     const latestHoverRef = useRef<THREE.Intersection | null>(null);
+    const lastHoverMeshRef = useRef<THREE.Mesh | null>(null);
     const forcePlaceOverrideRef = useRef(false);
     const hoverNormalRef = useRef(new THREE.Vector3());
     const cavityPreviewCacheNormalRef = useRef(new THREE.Vector3());
@@ -250,12 +252,18 @@ export function useTrunkPlacementV2() {
         setPreviewError((prev) => (prev === null ? prev : null));
         setPreviewWarning((prev) => (prev === null ? prev : null));
         cavityPreviewCacheRef.current = null;
+        lastHoverMeshRef.current = null;
+        setSymmetryPreviews([]);
         if (getSupportPathfindingDebugEnabled()) {
             setSupportPathfindingDebugSnapshot(null);
         }
     }, []);
 
-    const commitTrunkBuild = useCallback((trunkBuild: ReturnType<typeof buildTrunkData>, placementSurface?: PlacementSurface) => {
+    useEffect(() => {
+        setSymmetryPreviews(buildSymmetryPreviewCopies(lastHoverMeshRef.current ?? undefined, previewData));
+    }, [previewData]);
+
+    const commitTrunkBuild = useCallback((trunkBuild: ReturnType<typeof buildTrunkData>, placementSurface?: PlacementSurface, mesh?: THREE.Mesh) => {
         const markedBuild = markTrunkBuildPlacementSurface(trunkBuild, placementSurface);
         addRoot(markedBuild.root);
         addTrunk(markedBuild.trunk);
@@ -266,6 +274,7 @@ export function useTrunkPlacementV2() {
                 root: markedBuild.root,
             },
         });
+        symmetrizePlacedTrunk(mesh, markedBuild.root, markedBuild.trunk);
         clearSupportSelection();
     }, []);
 
@@ -326,6 +335,7 @@ export function useTrunkPlacementV2() {
                 cancelAnimationFrame(hoverFrameRef.current);
                 hoverFrameRef.current = null;
             }
+            setSymmetryPreviews([]);
         };
     }, []);
 
@@ -350,6 +360,7 @@ export function useTrunkPlacementV2() {
 
         const modelId = hit.object.userData.modelId || 'unknown';
         const objectUuid = hit.object.uuid;
+        lastHoverMeshRef.current = hit.object instanceof THREE.Mesh ? hit.object : null;
 
         // Keep hover preview on the same normal basis as click placement to
         // avoid preview-only false collision reports near tolerance boundaries.
@@ -618,6 +629,7 @@ export function useTrunkPlacementV2() {
                             type: SUPPORT_ADD_TWIG,
                             payload: { twig },
                         });
+                        symmetrizePlacedTwig(mesh, twig);
                     } else {
                         const stick = markStickPlacementSurface(cavityStick.stick, placementSurface);
                         addStick(stick);
@@ -625,6 +637,7 @@ export function useTrunkPlacementV2() {
                             type: SUPPORT_ADD_STICK,
                             payload: { stick },
                         });
+                        symmetrizePlacedStick(mesh, stick);
                     }
                     clearSupportSelection();
                     return;
@@ -633,7 +646,7 @@ export function useTrunkPlacementV2() {
             // No cavity floor found — for stagnation/budget, bail silently.
             // For other errors (collision), let the user force-place if desired.
             if (forcePlaceOverrideRef.current && (result.stagnated || result.exhaustedBudget || result.error)) {
-                commitTrunkBuild(result, placementSurface);
+                commitTrunkBuild(result, placementSurface, mesh);
             }
             return;
         }
@@ -644,7 +657,7 @@ export function useTrunkPlacementV2() {
         // placement which would offer branches as a fallback.
         if (result.error === 'ANGLE_TOO_STEEP') {
             if (forcePlaceOverrideRef.current) {
-                commitTrunkBuild(result, placementSurface);
+                commitTrunkBuild(result, placementSurface, mesh);
             }
             return;
         }
@@ -653,7 +666,7 @@ export function useTrunkPlacementV2() {
         // Only bail on trunk errors when grid is disabled (direct placement path).
         if (result.error && !settings.grid?.enabled) {
             if (forcePlaceOverrideRef.current) {
-                commitTrunkBuild(result, placementSurface);
+                commitTrunkBuild(result, placementSurface, mesh);
             }
             // Stick/twig is now strict last resort: do not fallback here unless
             // the solver reported true stagnation (handled above).
@@ -677,6 +690,7 @@ export function useTrunkPlacementV2() {
                 type: SUPPORT_ADD_ANCHOR,
                 payload: { anchor },
             });
+            symmetrizePlacedAnchor(mesh, anchor);
             clearSupportSelection();
             return;
         }
@@ -772,7 +786,7 @@ export function useTrunkPlacementV2() {
 
         if (decision.kind === 'reject') {
             if (forcePlaceOverrideRef.current && decision.trunkBuild) {
-                commitTrunkBuild(decision.trunkBuild, placementSurface);
+                commitTrunkBuild(decision.trunkBuild, placementSurface, mesh);
             }
             // Stick/twig is now strict last resort: keep reject behavior here.
             return;
@@ -780,8 +794,8 @@ export function useTrunkPlacementV2() {
 
         // decision.kind === 'place_trunk'
         const trunkBuild = decision.trunkBuild;
-        
-        commitTrunkBuild(trunkBuild, placementSurface);
+
+        commitTrunkBuild(trunkBuild, placementSurface, mesh);
         console.log('[V2] Added trunk:', trunkBuild.trunk.id, 'to model:', modelId);
     }, [commitTrunkBuild, isPlacementHardDisabled]);
 

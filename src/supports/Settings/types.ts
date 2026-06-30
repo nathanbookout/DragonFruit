@@ -98,6 +98,21 @@ export interface GridSettings {
     minRoutedTrunkAngleDeg: number;
 }
 
+export type SupportSymmetryMode = 'off' | 'mirror' | 'radial';
+export type SupportSymmetryScope = 'global' | 'local';
+export type SupportSymmetryAxis = 'x' | 'y' | 'z';
+
+export interface SupportSymmetrySettings {
+    mode: SupportSymmetryMode;
+    scope: SupportSymmetryScope;
+    x: boolean;
+    y: boolean;
+    z: boolean;
+    radialAxis: SupportSymmetryAxis;
+    radialCount: number;
+    toleranceMm: number;
+}
+
 export interface MeshToMeshSettings {
     stickVsTwigCutoffMm: number;
 }
@@ -134,6 +149,7 @@ export interface SupportSettings {
     baseFlare: BaseFlareProfile;
     joint: JointProfile;
     grid: GridSettings;
+    symmetry: SupportSymmetrySettings;
     meshToMesh: MeshToMeshSettings;
     autoBracing: AutoBracingSettings;
     devToolsEnabled: boolean;
@@ -192,6 +208,16 @@ export function createDefaultSettings(): SupportSettings {
             minBranchAngleDeg: DEFAULT_GRID_MIN_BRANCH_ANGLE_DEG,
             attachSearchStepMm: DEFAULT_GRID_ATTACH_SEARCH_STEP_MM,
             minRoutedTrunkAngleDeg: DEFAULT_GRID_MIN_ROUTED_TRUNK_ANGLE_DEG,
+        },
+        symmetry: {
+            mode: 'off',
+            scope: 'local',
+            x: true,
+            y: false,
+            z: false,
+            radialAxis: 'z',
+            radialCount: 8,
+            toleranceMm: 0.5,
         },
         meshToMesh: {
             stickVsTwigCutoffMm: DEFAULT_MESH_TO_MESH_STICK_VS_TWIG_CUTOFF_MM,

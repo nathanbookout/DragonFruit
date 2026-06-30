@@ -32,6 +32,7 @@ import { ContactDisk, SupportMode, BezierSegment, type Brace, type Knot, type Le
 import { resolveTwigDiameterAtSegmentT } from './SupportTypes/Twig/twigTaper';
 import { bezierToLineSegments, calculateAdaptiveBezierResolution } from './Curves/BezierUtils';
 import type { SupportData } from './rendering';
+import { getSymmetryPreviews, subscribeToSymmetryPreviews } from './mirroring/supportMirroring';
 import type { BracePreviewData } from './SupportTypes/Brace/bracePlacementState';
 import { useJointCreationState } from './SupportPrimitives/Joint/jointCreationState';
 import { useSupportHistoryHandlers } from './history/useSupportHistoryHandlers';
@@ -878,6 +879,7 @@ export const SupportRenderer = forwardRef<THREE.Group, SupportRendererProps>(({ 
     const resolvedSelection = useResolvedSelectionState();
     const settings = useSyncExternalStore(subscribeToSettings, getSettingsSnapshot, getSettingsSnapshot);
     const raftSettings = useSyncExternalStore(subscribeToRaftStore, getRaftSettings, getRaftSettings);
+    const symmetryPreviews = useSyncExternalStore(subscribeToSymmetryPreviews, getSymmetryPreviews, getSymmetryPreviews);
     const kickstandState = useKickstandStoreState();
     const activeJointDragPreview = useActiveJointDragPreview();
     const { isActive: isJointCreationActive } = useJointCreationState();
@@ -3588,6 +3590,7 @@ export const SupportRenderer = forwardRef<THREE.Group, SupportRendererProps>(({ 
         pushSupportPreview('placement-preview:branch', branchPlacementPreview);
         pushSupportPreview('placement-preview:leaf', leafPlacementPreview);
         pushSupportPreview('placement-preview:kickstand', kickstandPlacementPreview);
+        symmetryPreviews.forEach((preview) => pushSupportPreview(`placement-preview:symmetry:${preview.id}`, preview));
 
         if (bracePlacementPreview) {
             const braceBatch = buildBracePlacementPreviewBatch('placement-preview:brace', bracePlacementPreview);
@@ -3602,6 +3605,7 @@ export const SupportRenderer = forwardRef<THREE.Group, SupportRendererProps>(({ 
         leafPlacementPreview,
         bracePlacementPreview,
         kickstandPlacementPreview,
+        symmetryPreviews,
         raftSettings.bottomMode,
         raftSettings.thickness,
         hidePlateContactPrimitivesEffective,

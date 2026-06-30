@@ -2919,8 +2919,16 @@ export function addTrunk(trunk: Trunk) {
     notify();
 }
 
+type TrunkEditObserver = (previous: Trunk, next: Trunk) => void;
+let trunkEditObserver: TrunkEditObserver | null = null;
+
+export function setTrunkEditObserver(observer: TrunkEditObserver | null): void {
+    trunkEditObserver = observer;
+}
+
 export function updateTrunk(trunk: Trunk, options?: { skipDependentGeometry?: boolean }) {
     const skipDependentGeometry = options?.skipDependentGeometry === true;
+    const previousTrunk = state.trunks[trunk.id];
 
     const cachedHex = getCachedSupportSettingsHex('trunk', trunk.id, trunk.settingsCodeHex ?? undefined);
     const nextTrunk = !trunk.settingsCodeHex && cachedHex
@@ -2999,6 +3007,14 @@ export function updateTrunk(trunk: Trunk, options?: { skipDependentGeometry?: bo
     syncKickstandHostKnotsFromSharedKnots(nextKnots);
 
     notify();
+
+    if (previousTrunk && trunkEditObserver) {
+        try {
+            trunkEditObserver(previousTrunk, nextTrunk);
+        } catch (error) {
+            console.error('[SupportMirror] trunk edit propagation failed', error);
+        }
+    }
 }
 
 export function addBranch(branch: Branch) {

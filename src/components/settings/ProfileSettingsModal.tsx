@@ -91,6 +91,7 @@ import {
   LabeledResinFamilySelect,
   LabeledCurrencySelect,
   MaterialProfileFormSections,
+  MaterialScaleCompensationSection,
   MaterialAntiAliasingSection,
   MaterialProfileIdentitySection,
   PluginLocalMaterialSettingsSections,
@@ -4721,6 +4722,7 @@ export function ProfileSettingsModal({
                     adapter={selectedLocalMaterialSettingsAdapter}
                     localSettingsByOutput={editMaterialLocalSettingsByOutput}
                     onLocalSettingsByOutputChange={setEditMaterialLocalSettingsByOutput}
+                    primaryTabFooter={<MaterialScaleCompensationSection draft={editMaterialDraft} onChange={setEditMaterialDraft} />}
                   />
                 ) : (
                   <>
@@ -5427,6 +5429,7 @@ export function ProfileSettingsModal({
                     adapter={selectedLocalMaterialSettingsAdapter}
                     localSettingsByOutput={newMaterialLocalSettingsByOutput}
                     onLocalSettingsByOutputChange={setNewMaterialLocalSettingsByOutput}
+                    primaryTabFooter={<MaterialScaleCompensationSection draft={newMaterialDraft} onChange={setNewMaterialDraft} />}
                   />
                 ) : (
                   <>

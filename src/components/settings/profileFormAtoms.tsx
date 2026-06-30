@@ -656,47 +656,58 @@ export function MaterialProfileFormSections({ draft, onChange }: MaterialProfile
         </div>
       </div>
 
-      <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-2)' }}>
-        <div className="ui-meta font-semibold uppercase tracking-wide mb-2">
-          Scale Compensation (% shrinkage)
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <LabeledNumberInput
-            label="Scale X (%)"
-            value={draft.scaleCompensationPct.x}
-            onChange={(value) => onChange((prev) => ({
-              ...prev,
-              scaleCompensationPct: {
-                ...prev.scaleCompensationPct,
-                x: value,
-              },
-            }))}
-          />
-          <LabeledNumberInput
-            label="Scale Y (%)"
-            value={draft.scaleCompensationPct.y}
-            onChange={(value) => onChange((prev) => ({
-              ...prev,
-              scaleCompensationPct: {
-                ...prev.scaleCompensationPct,
-                y: value,
-              },
-            }))}
-          />
-          <LabeledNumberInput
-            label="Scale Z (%)"
-            value={draft.scaleCompensationPct.z}
-            onChange={(value) => onChange((prev) => ({
-              ...prev,
-              scaleCompensationPct: {
-                ...prev.scaleCompensationPct,
-                z: value,
-              },
-            }))}
-          />
-        </div>
-      </div>
+      <MaterialScaleCompensationSection draft={draft} onChange={onChange} />
     </>
+  );
+}
+
+type MaterialScaleCompensationSectionProps = {
+  draft: MaterialDraft;
+  onChange: React.Dispatch<React.SetStateAction<MaterialDraft>>;
+};
+
+export function MaterialScaleCompensationSection({ draft, onChange }: MaterialScaleCompensationSectionProps) {
+  return (
+    <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-2)' }}>
+      <div className="ui-meta font-semibold uppercase tracking-wide mb-2">
+        Scale Compensation (% shrinkage)
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <LabeledNumberInput
+          label="Scale X (%)"
+          value={draft.scaleCompensationPct.x}
+          onChange={(value) => onChange((prev) => ({
+            ...prev,
+            scaleCompensationPct: {
+              ...prev.scaleCompensationPct,
+              x: value,
+            },
+          }))}
+        />
+        <LabeledNumberInput
+          label="Scale Y (%)"
+          value={draft.scaleCompensationPct.y}
+          onChange={(value) => onChange((prev) => ({
+            ...prev,
+            scaleCompensationPct: {
+              ...prev.scaleCompensationPct,
+              y: value,
+            },
+          }))}
+        />
+        <LabeledNumberInput
+          label="Scale Z (%)"
+          value={draft.scaleCompensationPct.z}
+          onChange={(value) => onChange((prev) => ({
+            ...prev,
+            scaleCompensationPct: {
+              ...prev.scaleCompensationPct,
+              z: value,
+            },
+          }))}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -2267,6 +2278,7 @@ type ReplacementMaterialEditorShellProps = {
   adapter: ReturnType<typeof getProfileLocalMaterialSettingsAdapter> | null;
   localSettingsByOutput: LocalSettingsByOutputDraft;
   onLocalSettingsByOutputChange: React.Dispatch<React.SetStateAction<LocalSettingsByOutputDraft>>;
+  primaryTabFooter?: React.ReactNode;
 };
 
 export function ReplacementMaterialEditorShell({
@@ -2282,9 +2294,12 @@ export function ReplacementMaterialEditorShell({
   adapter,
   localSettingsByOutput,
   onLocalSettingsByOutputChange,
+  primaryTabFooter,
 }: ReplacementMaterialEditorShellProps) {
   const measureRootRef = React.useRef<HTMLDivElement | null>(null);
   const [minBodyHeight, setMinBodyHeight] = React.useState<number | null>(null);
+
+  const firstPluginTabId = tabs.find((tab) => tab.id !== 'meta' && tab.id !== 'anti-aliasing')?.id;
 
   const renderTabBody = React.useCallback((tabId: string) => {
     if (tabId === 'meta') {
@@ -2302,18 +2317,21 @@ export function ReplacementMaterialEditorShell({
     }
 
     return (
-      <PluginLocalMaterialSettingsSections
-        outputFormat={outputFormat}
-        settingsMode={settingsMode}
-        adapter={adapter}
-        localSettingsByOutput={localSettingsByOutput}
-        onChange={onLocalSettingsByOutputChange}
-        replacementMode
-        activeTabId={tabId}
-        showTabBar={false}
-      />
+      <>
+        <PluginLocalMaterialSettingsSections
+          outputFormat={outputFormat}
+          settingsMode={settingsMode}
+          adapter={adapter}
+          localSettingsByOutput={localSettingsByOutput}
+          onChange={onLocalSettingsByOutputChange}
+          replacementMode
+          activeTabId={tabId}
+          showTabBar={false}
+        />
+        {tabId === firstPluginTabId && primaryTabFooter}
+      </>
     );
-  }, [adapter, draft, localSettingsByOutput, onDraftChange, onLocalSettingsByOutputChange, outputFormat, printerDitherBitDepth, settingsMode]);
+  }, [adapter, draft, localSettingsByOutput, onDraftChange, onLocalSettingsByOutputChange, outputFormat, printerDitherBitDepth, settingsMode, firstPluginTabId, primaryTabFooter]);
 
   React.useLayoutEffect(() => {
     const root = measureRootRef.current;
