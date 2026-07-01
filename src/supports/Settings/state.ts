@@ -41,6 +41,21 @@ function mergeWithDefaults(settings: SupportSettings): SupportSettings {
         minRoutedTrunkAngleDeg: coerceNumber((mergedGridRaw as any).minRoutedTrunkAngleDeg, defaults.grid.minRoutedTrunkAngleDeg),
     };
 
+    const mergedSymmetryRaw = { ...defaults.symmetry, ...(settings as any).symmetry };
+    const symmetryMode = (mergedSymmetryRaw as any).mode;
+    const symmetryScope = (mergedSymmetryRaw as any).scope;
+    const symmetryRadialAxis = (mergedSymmetryRaw as any).radialAxis;
+    const mergedSymmetry: SupportSettings['symmetry'] = {
+        mode: symmetryMode === 'mirror' || symmetryMode === 'radial' ? symmetryMode : defaults.symmetry.mode,
+        scope: symmetryScope === 'global' ? 'global' : defaults.symmetry.scope,
+        x: coerceBoolean((mergedSymmetryRaw as any).x, defaults.symmetry.x),
+        y: coerceBoolean((mergedSymmetryRaw as any).y, defaults.symmetry.y),
+        z: coerceBoolean((mergedSymmetryRaw as any).z, defaults.symmetry.z),
+        radialAxis: symmetryRadialAxis === 'x' || symmetryRadialAxis === 'y' ? symmetryRadialAxis : defaults.symmetry.radialAxis,
+        radialCount: Math.max(2, Math.round(coerceNumber((mergedSymmetryRaw as any).radialCount, defaults.symmetry.radialCount))),
+        toleranceMm: coerceNumber((mergedSymmetryRaw as any).toleranceMm, defaults.symmetry.toleranceMm),
+    };
+
     const mergedAutoBracing = normalizeAutoBracingSettings({
         ...defaults.autoBracing,
         ...((settings as any).autoBracing ?? {}),
@@ -59,6 +74,7 @@ function mergeWithDefaults(settings: SupportSettings): SupportSettings {
         baseFlare: { ...defaults.baseFlare, ...settings.baseFlare },
         joint: { ...defaults.joint, ...settings.joint },
         grid: mergedGrid,
+        symmetry: mergedSymmetry,
         meshToMesh: { ...defaults.meshToMesh, ...(settings as any).meshToMesh },
         autoBracing: mergedAutoBracing,
         devToolsEnabled: settings.devToolsEnabled !== undefined ? settings.devToolsEnabled : defaults.devToolsEnabled,
@@ -107,6 +123,10 @@ export function getJointProfile() {
 
 export function getGridSettings() {
     return currentSettings.grid;
+}
+
+export function getSupportSymmetrySettings() {
+    return currentSettings.symmetry;
 }
 
 export function getMeshToMeshSettings() {
@@ -188,6 +208,14 @@ export function updateGridSettings(grid: Partial<SupportSettings['grid']>): void
     currentSettings = mergeWithDefaults({
         ...currentSettings,
         grid: { ...currentSettings.grid, ...grid },
+    });
+    notify();
+}
+
+export function updateSupportSymmetrySettings(symmetry: Partial<SupportSettings['symmetry']>): void {
+    currentSettings = mergeWithDefaults({
+        ...currentSettings,
+        symmetry: { ...currentSettings.symmetry, ...symmetry },
     });
     notify();
 }

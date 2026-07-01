@@ -15,6 +15,7 @@ import {
     updateShaftProfile,
     updateRootsProfile,
     updateGridSettings,
+    updateSupportSymmetrySettings,
     updateAutoBracingSettings,
     updateDevToolsEnabled,
 } from './state';
@@ -37,6 +38,7 @@ import {
     PresetSelector,
     RaftSettingsCard,
     GridSettingsCard,
+    SupportSymmetryCard,
     SupportKindTabs,
 } from './components';
 import { Card, CardHeader, IconButton } from '@/components/ui/primitives';
@@ -1284,6 +1286,9 @@ export function SupportSidebar() {
                                                             grid: {
                                                                 ...current.grid,
                                                             },
+                                                            symmetry: {
+                                                                ...current.symmetry,
+                                                            },
                                                             tip: {
                                                                 ...preset.settings.tip,
                                                                 coneAngleMode: current.tip.coneAngleMode,
@@ -1301,6 +1306,13 @@ export function SupportSidebar() {
                                                     }}
                                                 />
                                             </div>
+
+                                            <Section title="Support Symmetry">
+                                                <SupportSymmetryCard
+                                                    symmetry={settings.symmetry}
+                                                    onChange={(partial) => updateSupportSymmetrySettings(partial)}
+                                                />
+                                            </Section>
                                         </>
                                     ) : (
                                         <>
