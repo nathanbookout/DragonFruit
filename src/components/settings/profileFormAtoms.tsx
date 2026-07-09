@@ -669,8 +669,12 @@ type MaterialScaleCompensationSectionProps = {
 export function MaterialScaleCompensationSection({ draft, onChange }: MaterialScaleCompensationSectionProps) {
   return (
     <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-2)' }}>
-      <div className="ui-meta font-semibold uppercase tracking-wide mb-2">
+      <div className="ui-meta font-semibold uppercase tracking-wide mb-2 inline-flex items-center gap-1.5">
         Scale Compensation (% shrinkage)
+        <FieldHelpTooltip
+          label="Scale Compensation"
+          help="When using this resin, scale the entire scene/build plate by this amount. When set to 1%, each model on the build plate is scaled up by 1% before slicing (in addition to any transforms it has locally applied). Use this, for example to scale up resins that shrink by 1% or to scale up casting resins that shrink 1-2% due to metal shrinkage when casting."
+        />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <LabeledNumberInput
