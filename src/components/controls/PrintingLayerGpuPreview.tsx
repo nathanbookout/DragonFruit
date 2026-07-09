@@ -20,6 +20,10 @@ interface Props {
   mirrorY?: boolean;
   /** Draw each body in its material colour instead of one white silhouette. */
   multiMaterialMode?: boolean;
+  /** Per-axis resin scale-compensation FACTORS (1 = no change). Applied to the live
+   *  cross-section so it matches the sliced PNG (which bakes the same compensation),
+   *  eliminating the unscaled→scaled pop when a layer settles. */
+  scaleCompensation?: { x: number; y: number; z: number };
   className?: string;
   style?: React.CSSProperties;
 }
@@ -32,6 +36,9 @@ function DemandInvalidateOnChange({
   mirrorY,
   viewportWidthMm,
   viewportHeightMm,
+  compX,
+  compY,
+  compZ,
 }: {
   clipZ: number | null;
   supportVersion: number;
@@ -40,6 +47,9 @@ function DemandInvalidateOnChange({
   mirrorY: boolean;
   viewportWidthMm?: number;
   viewportHeightMm?: number;
+  compX: number;
+  compY: number;
+  compZ: number;
 }) {
   const { invalidate } = useThree();
 
@@ -53,6 +63,9 @@ function DemandInvalidateOnChange({
     mirrorY,
     viewportWidthMm,
     viewportHeightMm,
+    compX,
+    compY,
+    compZ,
     invalidate,
   ]);
 
@@ -75,6 +88,7 @@ export function PrintingLayerGpuPreview({
   mirrorX = false,
   mirrorY = false,
   multiMaterialMode = false,
+  scaleCompensation,
   className,
   style,
 }: Props) {
@@ -240,6 +254,9 @@ export function PrintingLayerGpuPreview({
           mirrorY={mirrorY}
           viewportWidthMm={viewportWidthMm}
           viewportHeightMm={viewportHeightMm}
+          compX={scaleCompensation?.x ?? 1}
+          compY={scaleCompensation?.y ?? 1}
+          compZ={scaleCompensation?.z ?? 1}
         />
         {capGroups.map((group, groupIndex) => (
           <CrossSectionStencilCap
@@ -248,6 +265,7 @@ export function PrintingLayerGpuPreview({
             sourceObject={supportGroupRef?.current ?? null}
             sourceObjectVersion={supportVersion}
             y={clipZ}
+            scaleCompensation={scaleCompensation}
             color={group.color}
             // Every group's stencil pass, cap and stencil clear must finish before
             // the next group starts: with one shared render order the groups' stencil

@@ -33,6 +33,8 @@ export type PrintingPreviewPaneProps = {
 
   printingPreviewTargetResolution: PreviewTargetResolution;
   activePrinterProfile: PrinterProfile | null | undefined;
+  /** Active resin's scale-compensation factors (1 = no change) for the live preview. */
+  printingScaleCompensation?: { x: number; y: number; z: number };
   printingPreviewVisualTransform: string | null | undefined;
 
   models: React.ComponentProps<typeof PrintingLayerGpuPreview>['models'];
@@ -78,6 +80,7 @@ export function PrintingPreviewPane({
   handlePrintingPreviewPointerEnd,
   printingPreviewTargetResolution,
   activePrinterProfile,
+  printingScaleCompensation,
   printingPreviewVisualTransform,
   models,
   supportDragGroupRef,
@@ -191,6 +194,7 @@ export function PrintingPreviewPane({
                       mirrorX={activePrinterProfile?.display?.mirrorX === true}
                       mirrorY={activePrinterProfile?.display?.mirrorY === true}
                       multiMaterialMode={activePrinterProfile?.materialMode === 'multiTank'}
+                      scaleCompensation={printingScaleCompensation}
                       className="block w-full h-full rounded"
                       style={{
                         transform: printingPreviewScrubUpscaleTransform || 'none',

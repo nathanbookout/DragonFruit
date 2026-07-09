@@ -926,6 +926,20 @@ export default function Home() {
   );
   const activePrinterProfile = React.useMemo(() => getActivePrinterProfile(profileState), [profileState]);
   const activeMaterialProfile = React.useMemo(() => getActiveMaterialProfile(profileState), [profileState]);
+  // Resin scale-compensation FACTORS (1 = no change) for the live printing preview,
+  // so its cross-section matches the sliced PNG (which bakes in the same compensation).
+  const printingScaleCompensation = React.useMemo(() => {
+    const toFactor = (percent: number | undefined) => 1 + (Number(percent) || 0) / 100;
+    return {
+      x: toFactor(activeMaterialProfile?.scaleCompensationPct?.x),
+      y: toFactor(activeMaterialProfile?.scaleCompensationPct?.y),
+      z: toFactor(activeMaterialProfile?.scaleCompensationPct?.z),
+    };
+  }, [
+    activeMaterialProfile?.scaleCompensationPct?.x,
+    activeMaterialProfile?.scaleCompensationPct?.y,
+    activeMaterialProfile?.scaleCompensationPct?.z,
+  ]);
   /**
    * A scene authored for a Multi-Tank printer cannot print on a single-material
    * one: its bodies carry tank assignments that a single film has nowhere to put.
@@ -11420,6 +11434,7 @@ export default function Home() {
             handlePrintingPreviewPointerEnd={handlePrintingPreviewPointerEnd}
             printingPreviewTargetResolution={printingPreviewTargetResolution}
             activePrinterProfile={activePrinterProfile}
+            printingScaleCompensation={printingScaleCompensation}
             printingPreviewVisualTransform={printingPreviewVisualTransform}
             models={printingScrubPreviewModels}
             supportDragGroupRef={supportDragGroupRef}
