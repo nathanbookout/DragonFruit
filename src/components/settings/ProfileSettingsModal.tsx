@@ -91,7 +91,6 @@ import {
   LabeledResinFamilySelect,
   LabeledCurrencySelect,
   MaterialProfileFormSections,
-  MaterialScaleCompensationSection,
   MaterialAntiAliasingSection,
   MaterialProfileIdentitySection,
   PluginLocalMaterialSettingsSections,
@@ -4709,23 +4708,20 @@ export function ProfileSettingsModal({
 
               <div className="p-3 space-y-3 overflow-y-auto custom-scrollbar flex-1">
                 {usePluginLocalSettingsAsReplacement ? (
-                  <>
-                    <ReplacementMaterialEditorShell
-                      tabs={replacementMaterialEditorTabs}
-                      activeTabId={materialEditorTab}
-                      onActiveTabChange={setMaterialEditorTab}
-                      activeTabStyle={accentSecondaryActionStyle92}
-                      draft={editMaterialDraft}
-                      onDraftChange={setEditMaterialDraft}
-                      printerDitherBitDepth={printerDitherBitDepth}
-                      outputFormat={selectedPrinter?.display.outputFormat ?? '.lys'}
-                      settingsMode={selectedResolvedSettingsMode}
-                      adapter={selectedLocalMaterialSettingsAdapter}
-                      localSettingsByOutput={editMaterialLocalSettingsByOutput}
-                      onLocalSettingsByOutputChange={setEditMaterialLocalSettingsByOutput}
-                    />
-                    <MaterialScaleCompensationSection draft={editMaterialDraft} onChange={setEditMaterialDraft} />
-                  </>
+                  <ReplacementMaterialEditorShell
+                    tabs={replacementMaterialEditorTabs}
+                    activeTabId={materialEditorTab}
+                    onActiveTabChange={setMaterialEditorTab}
+                    activeTabStyle={accentSecondaryActionStyle92}
+                    draft={editMaterialDraft}
+                    onDraftChange={setEditMaterialDraft}
+                    printerDitherBitDepth={printerDitherBitDepth}
+                    outputFormat={selectedPrinter?.display.outputFormat ?? '.lys'}
+                    settingsMode={selectedResolvedSettingsMode}
+                    adapter={selectedLocalMaterialSettingsAdapter}
+                    localSettingsByOutput={editMaterialLocalSettingsByOutput}
+                    onLocalSettingsByOutputChange={setEditMaterialLocalSettingsByOutput}
+                  />
                 ) : (
                   <>
                     <MaterialProfileFormSections draft={editMaterialDraft} onChange={setEditMaterialDraft} />
@@ -5418,23 +5414,20 @@ export function ProfileSettingsModal({
 
               <div className="p-3 space-y-3 overflow-y-auto custom-scrollbar flex-1">
                 {usePluginLocalSettingsAsReplacement ? (
-                  <>
-                    <ReplacementMaterialEditorShell
-                      tabs={replacementMaterialEditorTabs}
-                      activeTabId={materialEditorTab}
-                      onActiveTabChange={setMaterialEditorTab}
-                      activeTabStyle={accentSecondaryActionStyle92}
-                      draft={newMaterialDraft}
-                      onDraftChange={setNewMaterialDraft}
-                      printerDitherBitDepth={printerDitherBitDepth}
-                      outputFormat={selectedPrinter.display.outputFormat}
-                      settingsMode={selectedResolvedSettingsMode}
-                      adapter={selectedLocalMaterialSettingsAdapter}
-                      localSettingsByOutput={newMaterialLocalSettingsByOutput}
-                      onLocalSettingsByOutputChange={setNewMaterialLocalSettingsByOutput}
-                    />
-                    <MaterialScaleCompensationSection draft={newMaterialDraft} onChange={setNewMaterialDraft} />
-                  </>
+                  <ReplacementMaterialEditorShell
+                    tabs={replacementMaterialEditorTabs}
+                    activeTabId={materialEditorTab}
+                    onActiveTabChange={setMaterialEditorTab}
+                    activeTabStyle={accentSecondaryActionStyle92}
+                    draft={newMaterialDraft}
+                    onDraftChange={setNewMaterialDraft}
+                    printerDitherBitDepth={printerDitherBitDepth}
+                    outputFormat={selectedPrinter.display.outputFormat}
+                    settingsMode={selectedResolvedSettingsMode}
+                    adapter={selectedLocalMaterialSettingsAdapter}
+                    localSettingsByOutput={newMaterialLocalSettingsByOutput}
+                    onLocalSettingsByOutputChange={setNewMaterialLocalSettingsByOutput}
+                  />
                 ) : (
                   <>
                     <MaterialProfileFormSections draft={newMaterialDraft} onChange={setNewMaterialDraft} />

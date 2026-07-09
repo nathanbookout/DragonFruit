@@ -385,13 +385,9 @@ class TriangleFloatCollector {
   private chunkElementLimit = Number.POSITIVE_INFINITY;
 
   private scaleX = 1;
-
   private scaleY = 1;
-
   private scaleZ = 1;
-
   private originX = 0;
-
   private originY = 0;
 
   constructor(
