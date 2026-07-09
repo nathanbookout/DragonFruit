@@ -20,6 +20,12 @@ type CrossSectionStencilCapProps = {
   sourceObjectVersion?: unknown;
   skipSourceZBounds?: boolean;
   y: number;
+  /** Per-axis scale-compensation FACTORS (1 = no change) applied in world space:
+   *  XY about each entry's own origin, Z about the plate (z=0) — mirroring the
+   *  slicer's resin scale compensation so a live preview matches the sliced output.
+   *  Omit (or leave identity) for the in-scene cap, which must stay aligned with
+   *  the unscaled model. */
+  scaleCompensation?: { x: number; y: number; z: number };
   /** The y position of the OTHER clip boundary (if dual-cut is active).
    *  When provided, the stencil geometry is clipped by both planes so
    *  the stencil count matches the actual clipped model — eliminating
@@ -297,6 +303,27 @@ function composeTransformMatrix(transform: ModelTransform): THREE.Matrix4 {
   );
 }
 
+/**
+ * Post-multiply a world-space scale about (originX, originY) in XY and about the
+ * plate (z=0) in Z onto a model matrix. Applied AFTER the model transform (in world
+ * space), so it is correct regardless of the model's rotation — matching the slicer's
+ * per-part scale compensation exactly (see addTriangle in rasterLayerZipExport).
+ */
+function applyWorldScaleAboutOrigin(
+  matrix: THREE.Matrix4,
+  originX: number,
+  originY: number,
+  sx: number,
+  sy: number,
+  sz: number,
+): THREE.Matrix4 {
+  const toOrigin = new THREE.Matrix4().makeTranslation(-originX, -originY, 0);
+  const scale = new THREE.Matrix4().makeScale(sx, sy, sz);
+  const fromOrigin = new THREE.Matrix4().makeTranslation(originX, originY, 0);
+  // result = fromOrigin * scale * toOrigin * matrix
+  return fromOrigin.multiply(scale).multiply(toOrigin).multiply(matrix);
+}
+
 const worldBoundsScratch = new THREE.Box3();
 
 function getGeometryWorldZBounds(geometry: THREE.BufferGeometry, matrixWorld: THREE.Matrix4): { min: number; max: number } | null {
@@ -334,6 +361,7 @@ function CrossSectionStencilCapInner({
   sourceObjectVersion,
   skipSourceZBounds = false,
   y,
+  scaleCompensation,
   otherClipY,
   color = '#ffffff',
   planeWidthMm,
@@ -697,10 +725,15 @@ function CrossSectionStencilCapInner({
     item: ModelStencilPassEntry;
   }>>(new Map());
 
+  const compX = scaleCompensation?.x ?? 1;
+  const compY = scaleCompensation?.y ?? 1;
+  const compZ = scaleCompensation?.z ?? 1;
+
   const modelStencilEntries = React.useMemo<ModelStencilPassEntry[]>(() => {
     const cache = modelStencilEntryCacheRef.current;
     const liveIds = new Set<string>();
     const next: ModelStencilPassEntry[] = [];
+    const hasCompensation = compX !== 1 || compY !== 1 || compZ !== 1;
 
     for (const entry of entries) {
       liveIds.add(entry.id);
@@ -719,6 +752,9 @@ function CrossSectionStencilCapInner({
         transform.scale.x.toFixed(5),
         transform.scale.y.toFixed(5),
         transform.scale.z.toFixed(5),
+        compX.toFixed(5),
+        compY.toFixed(5),
+        compZ.toFixed(5),
       ].join('|');
 
       const cached = cache.get(entry.id);
@@ -727,7 +763,17 @@ function CrossSectionStencilCapInner({
         continue;
       }
 
-      const matrix = composeTransformMatrix(transform);
+      let matrix = composeTransformMatrix(transform);
+      if (hasCompensation) {
+        matrix = applyWorldScaleAboutOrigin(
+          matrix,
+          transform.position.x,
+          transform.position.y,
+          compX,
+          compY,
+          compZ,
+        );
+      }
       const worldMatrix = composeCenteredGeometryMatrix(matrix, center);
       const hasProvidedBounds = Number.isFinite(providedMinZ) && Number.isFinite(providedMaxZ);
       const resolvedMinZ = hasProvidedBounds ? Number(providedMinZ) : null;
@@ -766,7 +812,7 @@ function CrossSectionStencilCapInner({
     }
 
     return next;
-  }, [entries]);
+  }, [entries, compX, compY, compZ]);
 
   const visibleModelStencilEntries = React.useMemo(() => {
     // IMPORTANT: Do not z-filter here. Cached world bounds can be stale or

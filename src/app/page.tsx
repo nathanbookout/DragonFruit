@@ -1544,6 +1544,20 @@ export default function Home() {
   );
   const activePrinterProfile = React.useMemo(() => getActivePrinterProfile(profileState), [profileState]);
   const activeMaterialProfile = React.useMemo(() => getActiveMaterialProfile(profileState), [profileState]);
+  // Resin scale-compensation FACTORS (1 = no change) for the live printing preview,
+  // so its cross-section matches the sliced PNG (which bakes in the same compensation).
+  const printingScaleCompensation = React.useMemo(() => {
+    const toFactor = (percent: number | undefined) => 1 + (Number(percent) || 0) / 100;
+    return {
+      x: toFactor(activeMaterialProfile?.scaleCompensationPct?.x),
+      y: toFactor(activeMaterialProfile?.scaleCompensationPct?.y),
+      z: toFactor(activeMaterialProfile?.scaleCompensationPct?.z),
+    };
+  }, [
+    activeMaterialProfile?.scaleCompensationPct?.x,
+    activeMaterialProfile?.scaleCompensationPct?.y,
+    activeMaterialProfile?.scaleCompensationPct?.z,
+  ]);
   const hasActivePrinterProfile = Boolean(activePrinterProfile);
 
   // 2. Transform Management (needs geom for bounds)
@@ -19739,6 +19753,7 @@ export default function Home() {
                             supportVersion={supportRenderRefreshNonce}
                             mirrorX={activePrinterProfile?.display?.mirrorX === true}
                             mirrorY={activePrinterProfile?.display?.mirrorY === true}
+                            scaleCompensation={printingScaleCompensation}
                             className="block w-full h-full rounded"
                             style={{
                               transform: printingPreviewScrubUpscaleTransform || 'none',
