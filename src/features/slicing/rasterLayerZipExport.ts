@@ -381,17 +381,27 @@ class TriangleFloatCollector {
   private flushCallback?: (chunk: Uint8Array) => Promise<void>;
   
   private flushChain: Promise<void> = Promise.resolve();
-  
+
   private chunkElementLimit = Number.POSITIVE_INFINITY;
+
+  private scaleX = 1;
+  private scaleY = 1;
+  private scaleZ = 1;
+  private originX = 0;
+  private originY = 0;
 
   constructor(
     initialTriangleCapacity: number,
     flushCallback?: (chunk: Uint8Array) => Promise<void>,
     chunkTargetBytes?: number,
+    scale: { x: number; y: number; z: number } = { x: 1, y: 1, z: 1 },
   ) {
     const safeTriangleCapacity = Math.max(1, Math.floor(initialTriangleCapacity));
     this.data = new Float32Array(safeTriangleCapacity * 9);
     this.flushCallback = flushCallback;
+    this.scaleX = scale.x;
+    this.scaleY = scale.y;
+    this.scaleZ = scale.z;
 
     if (flushCallback) {
       const normalizedChunkBytes = normalizeMeshChunkTargetBytes(chunkTargetBytes);
@@ -400,6 +410,11 @@ class TriangleFloatCollector {
         Math.floor(normalizedChunkBytes / Float32Array.BYTES_PER_ELEMENT),
       );
     }
+  }
+
+  setScaleOrigin(originX: number, originY: number): void {
+    this.originX = originX;
+    this.originY = originY;
   }
 
   get triangleCount(): number {
@@ -432,6 +447,14 @@ class TriangleFloatCollector {
     cy: number,
     cz: number,
   ): void {
+    ax = this.originX + (ax - this.originX) * this.scaleX;
+    bx = this.originX + (bx - this.originX) * this.scaleX;
+    cx = this.originX + (cx - this.originX) * this.scaleX;
+    ay = this.originY + (ay - this.originY) * this.scaleY;
+    by = this.originY + (by - this.originY) * this.scaleY;
+    cy = this.originY + (cy - this.originY) * this.scaleY;
+    az *= this.scaleZ; bz *= this.scaleZ; cz *= this.scaleZ;
+
     this.ensureCapacity(9);
     const base = this.cursor;
     this.data[base] = ax;
@@ -780,6 +803,7 @@ function appendContactConePrimitive(
 function buildSupportAndRaftWorldTriangles(
   visibleModelIds: Set<string>,
   collector?: TriangleFloatCollector,
+  modelCentersById?: Map<string, { x: number; y: number }>,
 ): WorldTriangle[] {
   if (visibleModelIds.size === 0) return [];
 
@@ -787,6 +811,7 @@ function buildSupportAndRaftWorldTriangles(
   const supportState = getSupportSnapshot();
   const kickstandState = getKickstandSnapshot();
   const sink: TriangleSink = collector ?? out;
+  const applyScaleOrigin = createScaleOriginApplier(collector, modelCentersById);
   const raftSettings = getRaftSettings();
   const hasSolidBottom = raftSettings.bottomMode === 'solid';
   const raftThickness = raftSettings.thickness;
@@ -833,6 +858,7 @@ function buildSupportAndRaftWorldTriangles(
     const rootVisibleByModel = visibleModelIds.has(root.modelId);
     const rootVisibleByLink = visibleRootIds.has(root.id);
     if (!rootVisibleByModel && !rootVisibleByLink) continue;
+    applyScaleOrigin(rootModelKeyById.get(root.id) ?? root.modelId);
 
     // Mirror proxy hasSolidBottom logic: collapse disk height and shift root up so it
     // sits flush on top of the solid raft rather than extending through it.
@@ -865,6 +891,7 @@ function buildSupportAndRaftWorldTriangles(
     if (!visibleModelIds.has(trunk.modelId)) continue;
     const root = supportState.roots[trunk.rootId];
     if (!root) continue;
+    applyScaleOrigin(trunk.modelId);
 
     for (let i = 0; i < trunk.segments.length; i += 1) {
       const seg = trunk.segments[i];
@@ -890,6 +917,7 @@ function buildSupportAndRaftWorldTriangles(
     if (!modelId || !visibleModelIds.has(modelId)) continue;
     const parentKnot = supportState.knots[branch.parentKnotId];
     if (!parentKnot) continue;
+    applyScaleOrigin(modelId);
 
     for (let i = 0; i < branch.segments.length; i += 1) {
       const seg = branch.segments[i];
@@ -912,6 +940,7 @@ function buildSupportAndRaftWorldTriangles(
 
   for (const twig of Object.values(supportState.twigs)) {
     if (!visibleModelIds.has(twig.modelId)) continue;
+    applyScaleOrigin(twig.modelId);
     for (const seg of twig.segments) {
       const start = seg.bottomJoint
         ? new THREE.Vector3(seg.bottomJoint.pos.x, seg.bottomJoint.pos.y, seg.bottomJoint.pos.z)
@@ -925,6 +954,7 @@ function buildSupportAndRaftWorldTriangles(
 
   for (const stick of Object.values(supportState.sticks)) {
     if (!visibleModelIds.has(stick.modelId)) continue;
+    applyScaleOrigin(stick.modelId);
     for (const seg of stick.segments) {
       const start = seg.bottomJoint
         ? new THREE.Vector3(seg.bottomJoint.pos.x, seg.bottomJoint.pos.y, seg.bottomJoint.pos.z)
@@ -945,6 +975,7 @@ function buildSupportAndRaftWorldTriangles(
     const startKnot = supportState.knots[brace.startKnotId];
     const endKnot = supportState.knots[brace.endKnotId];
     if (!startKnot || !endKnot) continue;
+    applyScaleOrigin(modelId);
     // Mirror renderer: derive visual diameter from host knot diameters, not raw profile.diameter.
     const profileDiameter = Math.max(0.001, brace.profile?.diameter ?? 1);
     const startHostDia = Math.max(0.05, (startKnot.diameter ?? (profileDiameter + 0.1)) - 0.1);
@@ -963,6 +994,7 @@ function buildSupportAndRaftWorldTriangles(
   for (const leaf of Object.values(supportState.leaves)) {
     const modelId = leaf.modelId;
     if (!modelId || !visibleModelIds.has(modelId)) continue;
+    applyScaleOrigin(modelId);
     appendContactConePrimitive(sink, leaf.contactCone as any, tessellation.contactConeRadialSegments);
   }
 
@@ -972,6 +1004,7 @@ function buildSupportAndRaftWorldTriangles(
     const root = kickstandState.roots[kickstand.rootId];
     const hostKnot = kickstandState.knots[kickstand.hostKnotId];
     if (!root || !hostKnot) continue;
+    applyScaleOrigin(modelId);
 
     let currentStart = new THREE.Vector3(
       root.transform.pos.x,
@@ -1014,8 +1047,9 @@ function buildSupportAndRaftWorldTriangles(
       rootsByModel.set(modelKey, arr);
     }
 
-    for (const circles of rootsByModel.values()) {
+    for (const [modelKey, circles] of rootsByModel.entries()) {
       if (circles.length === 0) continue;
+      applyScaleOrigin(modelKey);
       const clampedChamfer = Math.min(90, Math.max(45, raft.chamferAngle));
       const chamferInset = raft.bottomMode === 'line'
         ? Math.max(0, raft.lineHeightMm) * Math.tan((Math.PI / 180) * (90 - clampedChamfer))
@@ -1440,6 +1474,7 @@ function appendModelWorldTrianglesToCollector(
   const v2 = new THREE.Vector3();
 
   for (const model of models) {
+    collector.setScaleOrigin(model.transform.position.x, model.transform.position.y);
     const matrix = composeModelMatrix(model.transform);
     const center = model.geometry.center;
     const geometry = model.geometry.geometry;
@@ -2099,6 +2134,25 @@ export async function rasterizeLayersForWasm(options: RasterLayerZipExportOption
   };
 }
 
+function resolveScaleCompensationFactors(materialProfile: MaterialProfile): { x: number; y: number; z: number } {
+  const toFactor = (percent: number) => 1 + (Number(percent) || 0) / 100;
+  return {
+    x: toFactor(materialProfile.scaleCompensationPct.x),
+    y: toFactor(materialProfile.scaleCompensationPct.y),
+    z: toFactor(materialProfile.scaleCompensationPct.z),
+  };
+}
+
+function createScaleOriginApplier(
+  collector: TriangleFloatCollector | undefined,
+  modelCentersById: Map<string, { x: number; y: number }> | undefined,
+): (modelId?: string) => void {
+  return (modelId?: string) => {
+    const center = modelId ? modelCentersById?.get(modelId) : undefined;
+    collector?.setScaleOrigin(center?.x ?? 0, center?.y ?? 0);
+  };
+}
+
 export async function buildSolidSliceMeshForWasm(options: RasterLayerZipExportOptions): Promise<SolidSliceMeshForWasm> {
   const visibleModels = options.models.filter((model) => model.visible);
   if (visibleModels.length === 0) {
@@ -2117,6 +2171,7 @@ export async function buildSolidSliceMeshForWasm(options: RasterLayerZipExportOp
     modelTriangleCount + 4096,
     options.flushBinaryMeshChunk,
     options.meshChunkTargetBytes,
+    resolveScaleCompensationFactors(options.materialProfile),
   );
 
   appendModelWorldTrianglesToCollector(visibleModels, collector);
@@ -2126,7 +2181,11 @@ export async function buildSolidSliceMeshForWasm(options: RasterLayerZipExportOp
   });
 
   const visibleModelIds = new Set(visibleModels.map((model) => model.id));
-  buildSupportAndRaftWorldTriangles(visibleModelIds, collector);
+  const modelCentersById = new Map(visibleModels.map((model) => [
+    model.id,
+    { x: model.transform.position.x, y: model.transform.position.y },
+  ]));
+  buildSupportAndRaftWorldTriangles(visibleModelIds, collector, modelCentersById);
   emitMeshPrepDiagnostic('Mesh prep: supports', 2, 4, {
     triangleCountAfterSupports: collector.triangleCount,
   });
