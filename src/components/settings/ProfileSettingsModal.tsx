@@ -115,7 +115,6 @@ import {
   LabeledResinFamilySelect,
   LabeledCurrencySelect,
   MaterialProfileFormSections,
-  MaterialScaleCompensationSection,
   MaterialAntiAliasingSection,
   MaterialProfileIdentitySection,
   PluginLocalMaterialSettingsSections,
@@ -5435,27 +5434,24 @@ export function ProfileSettingsModal({
 
               <div className="p-3 space-y-3 overflow-y-auto custom-scrollbar flex-1 flex flex-col">
                 {usePluginLocalSettingsAsReplacement ? (
-                  <>
-                    <ReplacementMaterialEditorShell
-                      tabs={replacementMaterialEditorTabs}
-                      activeTabId={materialEditorTab}
-                      onActiveTabChange={handleMaterialEditorTabChange}
-                      activeTabStyle={accentSecondaryActionStyle92}
-                      draft={editMaterialDraft}
-                      onDraftChange={setEditMaterialDraft}
-                      printerDitherBitDepth={printerDitherBitDepth}
-                      printerPanelBitDepth={printerPanelBitDepth}
-                      outputFormat={selectedPrinter?.display.outputFormat ?? '.lys'}
-                      settingsMode={selectedResolvedSettingsMode}
-                      adapter={selectedLocalMaterialSettingsAdapter}
-                      localSettingsByOutput={editMaterialLocalSettingsByOutput}
-                      onLocalSettingsByOutputChange={setEditMaterialLocalSettingsByOutput}
-                      printerProfiles={profileState.printerProfiles}
-                      shareablePrinterIds={editShareablePrinterIds}
-                      ownerPrinterId={selectedMaterial?.printerProfileId}
-                    />
-                    <MaterialScaleCompensationSection draft={editMaterialDraft} onChange={setEditMaterialDraft} />
-                  </>
+                  <ReplacementMaterialEditorShell
+                    tabs={replacementMaterialEditorTabs}
+                    activeTabId={materialEditorTab}
+                    onActiveTabChange={handleMaterialEditorTabChange}
+                    activeTabStyle={accentSecondaryActionStyle92}
+                    draft={editMaterialDraft}
+                    onDraftChange={setEditMaterialDraft}
+                    printerDitherBitDepth={printerDitherBitDepth}
+                    printerPanelBitDepth={printerPanelBitDepth}
+                    outputFormat={selectedPrinter?.display.outputFormat ?? '.lys'}
+                    settingsMode={selectedResolvedSettingsMode}
+                    adapter={selectedLocalMaterialSettingsAdapter}
+                    localSettingsByOutput={editMaterialLocalSettingsByOutput}
+                    onLocalSettingsByOutputChange={setEditMaterialLocalSettingsByOutput}
+                    printerProfiles={profileState.printerProfiles}
+                    shareablePrinterIds={editShareablePrinterIds}
+                    ownerPrinterId={selectedMaterial?.printerProfileId}
+                  />
                 ) : (
                   <>
                     <MaterialProfileFormSections
@@ -6357,27 +6353,24 @@ export function ProfileSettingsModal({
 
               <div className="p-3 space-y-3 overflow-y-auto custom-scrollbar flex-1 flex flex-col">
                 {usePluginLocalSettingsAsReplacement ? (
-                  <>
-                    <ReplacementMaterialEditorShell
-                      tabs={replacementMaterialEditorTabs}
-                      activeTabId={materialEditorTab}
-                      onActiveTabChange={handleMaterialEditorTabChange}
-                      activeTabStyle={accentSecondaryActionStyle92}
-                      draft={newMaterialDraft}
-                      onDraftChange={setNewMaterialDraft}
-                      printerDitherBitDepth={printerDitherBitDepth}
-                      printerPanelBitDepth={printerPanelBitDepth}
-                      outputFormat={selectedPrinter.display.outputFormat}
-                      settingsMode={selectedResolvedSettingsMode}
-                      adapter={selectedLocalMaterialSettingsAdapter}
-                      localSettingsByOutput={newMaterialLocalSettingsByOutput}
-                      onLocalSettingsByOutputChange={setNewMaterialLocalSettingsByOutput}
-                      printerProfiles={profileState.printerProfiles}
-                      shareablePrinterIds={newShareablePrinterIds}
-                      ownerPrinterId={selectedPrinter?.id}
-                    />
-                    <MaterialScaleCompensationSection draft={newMaterialDraft} onChange={setNewMaterialDraft} />
-                  </>
+                  <ReplacementMaterialEditorShell
+                    tabs={replacementMaterialEditorTabs}
+                    activeTabId={materialEditorTab}
+                    onActiveTabChange={handleMaterialEditorTabChange}
+                    activeTabStyle={accentSecondaryActionStyle92}
+                    draft={newMaterialDraft}
+                    onDraftChange={setNewMaterialDraft}
+                    printerDitherBitDepth={printerDitherBitDepth}
+                    printerPanelBitDepth={printerPanelBitDepth}
+                    outputFormat={selectedPrinter.display.outputFormat}
+                    settingsMode={selectedResolvedSettingsMode}
+                    adapter={selectedLocalMaterialSettingsAdapter}
+                    localSettingsByOutput={newMaterialLocalSettingsByOutput}
+                    onLocalSettingsByOutputChange={setNewMaterialLocalSettingsByOutput}
+                    printerProfiles={profileState.printerProfiles}
+                    shareablePrinterIds={newShareablePrinterIds}
+                    ownerPrinterId={selectedPrinter?.id}
+                  />
                 ) : (
                   <>
                     <MaterialProfileFormSections

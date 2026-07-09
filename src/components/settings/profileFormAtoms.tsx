@@ -3037,6 +3037,8 @@ export function ReplacementMaterialEditorShell({
                     ))}
                 </div>
             </div>
+
+            <MaterialScaleCompensationSection draft={draft} onChange={onDraftChange} />
         </div>
     );
 }
