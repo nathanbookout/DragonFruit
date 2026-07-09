@@ -2143,10 +2143,6 @@ function resolveScaleCompensationFactors(materialProfile: MaterialProfile): { x:
   };
 }
 
-// TODO(follow-up PR): scale compensation currently scales every model about its
-// own origin. When multiple models are selected, offer a "Scale Center" choice
-// (Individual Origins | Group Center) so a selection can be scaled about its
-// combined center instead. Tracked in the PR description.
 function createScaleOriginApplier(
   collector: TriangleFloatCollector | undefined,
   modelCentersById: Map<string, { x: number; y: number }> | undefined,
