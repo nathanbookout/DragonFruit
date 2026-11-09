@@ -444,6 +444,10 @@ function buildPlacementPreviewBatches(
     }
 
     // Ghosts of the copies support symmetry would place alongside the live preview.
+    // Only alongside a live, ungated preview: every SupportRenderer instance runs
+    // this, but only one receives the gated previews, so this also keeps the
+    // ghosts from drawing once per instance and honours upstream's suppression.
+    if (next.length === 0) return next;
     for (const preview of symmetryPreviews) {
         const batch = buildSupportPlacementPreviewBatch(`placement-preview:symmetry:${preview.id}`, preview, hasSolidBottom, raftThickness);
         if (!batch) continue;
@@ -691,6 +695,7 @@ export const SupportRenderer = forwardRef<THREE.Group, SupportRendererProps>(({ 
      */
     const rootBatchActive = SUPPORT_INSTANCED_ROOTS && !simpleRender;
     const raftSettings = useSyncExternalStore(subscribeToRaftStore, getRaftSettings, getRaftSettings);
+    const symmetryPreviews = useSyncExternalStore(subscribeToSymmetryPreviews, getSymmetryPreviews, getSymmetryPreviews);
     // The knots kickstands host and the roots they own, derived from the
     // registry's edges rather than a kickstand-specific store.
     const kickstandKnotsById = useSyncExternalStore(subscribe, getKickstandKnots, getKickstandKnots);
@@ -2874,10 +2879,11 @@ export const SupportRenderer = forwardRef<THREE.Group, SupportRendererProps>(({ 
     const placementPreviewBatches = useMemo(() => {
         if (mode !== 'support') return [] as PlacementPreviewBatch[];
 
-        return buildPlacementPreviewBatches(placementPreviews, raftSettings.bottomMode === 'solid', raftSettings.thickness ?? 0, hidePlateContactPrimitivesEffective);
+        return buildPlacementPreviewBatches(placementPreviews, raftSettings.bottomMode === 'solid', raftSettings.thickness ?? 0, hidePlateContactPrimitivesEffective, symmetryPreviews);
     }, [
         mode,
         placementPreviews,
+        symmetryPreviews,
         raftSettings.bottomMode,
         raftSettings.thickness,
         hidePlateContactPrimitivesEffective,
