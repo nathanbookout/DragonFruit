@@ -368,7 +368,7 @@ export function LabeledNumberInput({ label, helpText, tag, color, disabled = fal
                     value={localValue}
                     title={title}
                     onChange={(event) => {
-                        if (event.target.value.includes('-')) return;
+                        if (min >= 0 && event.target.value.includes('-')) return;
                         setLocalValue(event.target.value);
                     }}
                     onFocus={() => setIsFocused(true)}
@@ -1052,6 +1052,10 @@ type MaterialScaleCompensationSectionProps = {
   onChange: React.Dispatch<React.SetStateAction<MaterialDraft>>;
 };
 
+/** Scale compensation range: negative shrinks the part, positive grows it. */
+const SCALE_COMPENSATION_MIN_PCT = -50;
+const SCALE_COMPENSATION_MAX_PCT = 50;
+
 export function MaterialScaleCompensationSection({ draft, onChange }: MaterialScaleCompensationSectionProps) {
   return (
     <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-2)' }}>
@@ -1059,12 +1063,14 @@ export function MaterialScaleCompensationSection({ draft, onChange }: MaterialSc
         Scale Compensation (% shrinkage)
         <FieldHelpTooltip
           label="Scale Compensation"
-          help="When using this resin, scale the entire scene/build plate by this amount. When set to 1%, each model on the build plate is scaled up by 1% before slicing (in addition to any transforms it has locally applied). Use this, for example to scale up resins that shrink by 1% or to scale up casting resins that shrink 1-2% due to metal shrinkage when casting."
+          help="When using this resin, scale the entire scene/build plate by this amount. When set to 1%, each model on the build plate is scaled up by 1% before slicing (in addition to any transforms it has locally applied). Use this, for example to scale up resins that shrink by 1% or to scale up casting resins that shrink 1-2% due to metal shrinkage when casting. Negative values scale down instead, e.g. -1% for a resin that expands."
         />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <LabeledNumberInput
           label="Scale X (%)"
+          min={SCALE_COMPENSATION_MIN_PCT}
+          max={SCALE_COMPENSATION_MAX_PCT}
           value={draft.scaleCompensationPct.x}
           onChange={(value) => onChange((prev) => ({
             ...prev,
@@ -1076,6 +1082,8 @@ export function MaterialScaleCompensationSection({ draft, onChange }: MaterialSc
         />
         <LabeledNumberInput
           label="Scale Y (%)"
+          min={SCALE_COMPENSATION_MIN_PCT}
+          max={SCALE_COMPENSATION_MAX_PCT}
           value={draft.scaleCompensationPct.y}
           onChange={(value) => onChange((prev) => ({
             ...prev,
@@ -1087,6 +1095,8 @@ export function MaterialScaleCompensationSection({ draft, onChange }: MaterialSc
         />
         <LabeledNumberInput
           label="Scale Z (%)"
+          min={SCALE_COMPENSATION_MIN_PCT}
+          max={SCALE_COMPENSATION_MAX_PCT}
           value={draft.scaleCompensationPct.z}
           onChange={(value) => onChange((prev) => ({
             ...prev,
