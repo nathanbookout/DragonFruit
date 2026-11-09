@@ -8,7 +8,7 @@ import { buildTrunkData } from './trunkBuilder';
 import { computeAndApplySupportDiameterProfile } from './TrunkReplacement';
 import { supportDataForEntity, type SupportData } from '../../rendering/SupportBuilder';
 import { markPlacementSurface, markSupportDataPlacementSurface, type PlacementSurface } from '../../PlacementLogic/placementSurface';
-import type { LimitationCode, Roots, Segment, WarningCode } from '../../types';
+import type { LimitationCode, Segment, WarningCode } from '../../types';
 import { calculateSmoothedNormal } from '../../PlacementLogic/PlacementUtils';
 import { getSettings } from '../../Settings/state';
 import { decideGridPlacement } from '../../PlacementLogic/Grid';
@@ -16,8 +16,10 @@ import { cascadeExtras, getSupportTypeDescriptor, bridgeMayLandSideways, buildCo
 import { clearSupportSelection } from '../../interaction/shared/selection/selectionController';
 import { isContactDiskHudInteractionActive, shouldSuppressContactDiskHudPlacementCommit } from '../../SupportPrimitives/ContactDisk/contactDiskHudInteraction';
 import { perfMark, perfMeasureWithSpike, perfEndFrame } from '../../PlacementLogic/Pathfinding/pathfindingPerf';
-import { buildSymmetryPreviewCopies, meshModelSurface, setSymmetryPreviews, symmetrizePlacedEntity, symmetrizePlacedTrunk } from '../../mirroring/supportMirroring';
-import type { ModelSurface } from '../../mirroring/supportMirroring';
+import { setSymmetryPreviews, symmetryPlacementHits } from '../../mirroring/supportMirroring';
+import { captureSupportEditSnapshot, pushSupportEditHistory } from '../../history/supportEditHistory';
+import { withSupportHistorySuppressed } from '../../history/supportHistory';
+import { msg } from '@lingui/core/macro';
 
 import { isShaftBlocked } from '../../PlacementLogic/CollisionAvoidance';
 
@@ -292,7 +294,7 @@ export function useTrunkPlacementV2() {
         }
     }, []);
 
-    const commitTrunkBuild = useCallback((trunkBuild: ReturnType<typeof buildTrunkData>, placementSurface?: PlacementSurface, modelSurface?: ModelSurface) => {
+    const commitTrunkBuild = useCallback((trunkBuild: ReturnType<typeof buildTrunkData>, placementSurface?: PlacementSurface) => {
         const markedBuild = markTrunkBuildPlacementSurface(trunkBuild, placementSurface);
         // The action and the payload are both declared by the type, so neither
         // is written here. Resolved before the write: an unstamped trunk used to
@@ -304,7 +306,6 @@ export function useTrunkPlacementV2() {
             addRoot(markedBuild.root);
             addSupportEntityWithHistory(trunkTypeId, markedBuild.trunk);
         });
-        symmetrizePlacedTrunk(modelSurface, markedBuild.root, markedBuild.trunk);
         clearSupportSelection();
         clearPreview();
     }, [clearPreview]);
@@ -369,6 +370,143 @@ export function useTrunkPlacementV2() {
             setSymmetryPreviews([]);
         };
     }, []);
+
+    /**
+     * What hovering `hit` would preview: the support data plus its error and
+     * warning. Pure apart from perf marks, so the symmetry copies can be resolved
+     * through exactly the same pipeline as the hovered point.
+     */
+    const resolveHoverPreview = useCallback((
+        hit: THREE.Intersection,
+        tipPos: { x: number; y: number; z: number },
+        tipNormal: { x: number; y: number; z: number },
+        modelId: string,
+    ): { data: SupportData | null; error: LimitationCode | null; warning: WarningCode | null } => {
+        const settings = getSettings();
+        const isGridMode = Boolean(settings.grid?.enabled && settings.grid.spacingMm > 0);
+
+        const mesh = hit.object instanceof THREE.Mesh ? hit.object : undefined;
+
+        perfMark('hover:trunk-build');
+        // Grid mode routes like every other mode. It used to build a straight
+        // candidate with no mesh, which meant a grid support could not reach
+        // anything under an overhang: the pillar was drawn straight down, the
+        // collision gate refused it, and the fixed-node resolver had nothing
+        // left to attach to. The router is cheap enough now (~20 probes) that
+        // the only reason to skip it was the old search's cost.
+        const result = buildTrunkData({ tipPos, tipNormal, modelId, mesh, isPreview: true });
+        perfMeasureWithSpike('hover:trunk-build', 'trunk:build');
+
+        // Fast-path for cavity hover when the trunk can't route to the build
+        // plate: try a stick/twig bridge to the nearest surface below the tip.
+        // This covers stagnation, budget exhaustion, AND general collision errors
+        // (e.g. tip inside a "mouth" cavity where the straight path is blocked).
+        //
+        // IMPORTANT: ANGLE_TOO_STEEP (shallow angle / upward face) is a hard
+        // surface rejection that prevents ALL support types — do NOT fall back
+        // to a stick or twig for this error.
+        // OUT_OF_BOUNDS is a build-plate refusal, not a routing failure that a
+        // cavity bridge can rescue.
+        const cavityBridgeEligible = result.error !== 'OUT_OF_BOUNDS'
+            && (result.stagnated || result.exhaustedBudget
+                || (result.error && result.error !== 'ANGLE_TOO_STEEP'));
+        if (cavityBridgeEligible) {
+            if (mesh) {
+                perfMark('hover:cavity-stick');
+                const cavityBridge = resolveCavityBridgePreview(hit, tipPos, tipNormal, modelId, mesh);
+                perfMeasureWithSpike('hover:cavity-stick', 'branch:cavity-stick');
+                if (cavityBridge) {
+                    return { data: cavityBridge.supportData, error: null, warning: null };
+                }
+            }
+            // No cavity floor found — show the trunk error as fallback.
+            if (result.stagnated || result.exhaustedBudget) {
+                return { data: result.supportData, error: forcePlaceOverrideRef.current ? null : (result.error || null), warning: null };
+            }
+            // For non-stagnation errors, fall through to grid placement decision
+            // (which may still place a branch or reject).
+        }
+
+        // When grid is disabled, the trunk candidate is already final — skip
+        // the grid snapping/branch logic entirely. A tip height claimed by a
+        // type that OVERRIDES the default build is the exception:
+        // decideGridPlacement owns that decision in BOTH modes (its validation
+        // also previews the rejection ghost), so those must not take this early
+        // out. Asked of the registry rather than naming the claiming type.
+        const claimedType = selectTypeForPlacement('tipHeight', tipPos.z);
+        const isOverriddenBand = !!claimedType && !!buildContactOverride(claimedType);
+        if (!isGridMode && !isOverriddenBand) {
+            return { data: result.supportData, error: forcePlaceOverrideRef.current ? null : (result.error || null), warning: result.warning || null };
+        }
+
+        // ANGLE_TOO_STEEP is a hard surface rejection (shallow angle / upward
+        // face) that prevents ALL support types — trunk, branch, leaf, and
+        // stick alike.  Reject immediately instead of deferring to grid
+        // placement which would offer branches as a fallback.
+        if (result.error === 'ANGLE_TOO_STEEP') {
+            return { data: result.supportData, error: forcePlaceOverrideRef.current ? null : result.error, warning: null };
+        }
+
+        perfMark('hover:grid-decision');
+        const decision = decideGridPlacement({
+            settings,
+            snapshot: getSnapshot(),
+            candidate: result,
+            tipPos,
+            tipNormal,
+            modelId,
+            mesh,
+            isPreview: true,
+        });
+        perfMeasureWithSpike('hover:grid-decision', 'grid:decision');
+
+        // Every accepted decision previews what it will place, and a rejected
+        // one previews the ghost the engine built. Neither needs to know which
+        // type is involved.
+        const previewData = decision.kind === 'place'
+            ? decision.supportData
+            : decision.trunkBuild?.supportData;
+        if (decision.kind !== 'reject' && previewData) {
+            return { data: previewData, error: forcePlaceOverrideRef.current ? null : (previewData.error || null), warning: previewData.warning || null };
+        }
+
+        // reject
+        if (decision.kind === 'reject' && decision.reason === 'COLLISION_WITH_MODEL' && mesh) {
+            perfMark('hover:cavity-stick');
+            const cavityBridge = resolveCavityBridgePreview(hit, tipPos, tipNormal, modelId, mesh);
+            perfMeasureWithSpike('hover:cavity-stick', 'branch:cavity-stick');
+            if (cavityBridge) {
+                return { data: cavityBridge.supportData, error: null, warning: null };
+            }
+        }
+
+        // Rejections that already built geometry (stump validation) preview
+        // the invalid support as a red ghost; the `error` on the SupportData
+        // drives the "Cannot Place Support" tooltip.
+        if (decision.kind === 'reject' && decision.supportData) {
+            return { data: decision.supportData, error: forcePlaceOverrideRef.current ? null : (decision.supportData.error ?? null), warning: null };
+        }
+
+        // A rejection from the GRID engine still previews the trunk it built,
+        // so the ghost and the reason stay available.
+        if (decision.kind === 'reject' && decision.trunkBuild) {
+            return { data: decision.trunkBuild.supportData, error: forcePlaceOverrideRef.current ? null : (decision.trunkBuild.error || null), warning: decision.trunkBuild.warning || null };
+        }
+
+        return {
+            data: null,
+            error: forcePlaceOverrideRef.current
+            ? null
+            : decision.kind === 'reject' && decision.reason === 'KNOT_ABOVE_TIP'
+                ? 'KNOT_ABOVE_TIP'
+                : decision.kind === 'reject' && decision.reason === 'STUMP_BELOW_ROOT'
+                    ? 'STUMP_BELOW_ROOT'
+                    : decision.kind === 'reject' && decision.reason === 'COLLISION_WITH_MODEL'
+                        ? 'COLLISION_WITH_MODEL'
+                        : null,
+            warning: null,
+        };
+    }, [resolveCavityBridgePreview]);
 
     const processSupportHover = useCallback((hit: THREE.Intersection | null) => {
         // SpaceMouse navigation keeps picking live, so a new hover arrives every
@@ -437,170 +575,31 @@ export function useTrunkPlacementV2() {
         const tipPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z };
 
         perfMark('hover:total');
-        const settings = getSettings();
-        const isGridMode = Boolean(settings.grid?.enabled && settings.grid.spacingMm > 0);
+        const main = resolveHoverPreview(hit, tipPos, tipNormal, modelId);
+        if (main.data) setPreviewData(main.data);
+        else setPreviewData((prev) => (prev === null ? prev : null));
+        setPreviewError(main.error);
+        if (main.warning) setPreviewWarning(main.warning);
+        else setPreviewWarning((prev) => (prev === null ? prev : null));
 
+        // Symmetry copies: each mirrored contact point goes through the same
+        // pipeline a hover there would, so a copy routes around the model rather
+        // than being a rigid copy of this one's path.
         const mesh = hit.object instanceof THREE.Mesh ? hit.object : undefined;
-        const modelSurface = mesh ? meshModelSurface(mesh) : undefined;
-        // Every preview also ghosts the symmetry copies that a click would place.
-        const commitPreview = (data: SupportData | null) => {
-            setPreviewData(data);
-            setSymmetryPreviews(buildSymmetryPreviewCopies(modelSurface, data));
-        };
-
-        perfMark('hover:trunk-build');
-        // Grid mode routes like every other mode. It used to build a straight
-        // candidate with no mesh, which meant a grid support could not reach
-        // anything under an overhang: the pillar was drawn straight down, the
-        // collision gate refused it, and the fixed-node resolver had nothing
-        // left to attach to. The router is cheap enough now (~20 probes) that
-        // the only reason to skip it was the old search's cost.
-        const result = buildTrunkData({ tipPos, tipNormal, modelId, mesh, isPreview: true });
-        perfMeasureWithSpike('hover:trunk-build', 'trunk:build');
-
-        // Fast-path for cavity hover when the trunk can't route to the build
-        // plate: try a stick/twig bridge to the nearest surface below the tip.
-        // This covers stagnation, budget exhaustion, AND general collision errors
-        // (e.g. tip inside a "mouth" cavity where the straight path is blocked).
-        //
-        // IMPORTANT: ANGLE_TOO_STEEP (shallow angle / upward face) is a hard
-        // surface rejection that prevents ALL support types — do NOT fall back
-        // to a stick or twig for this error.
-        // OUT_OF_BOUNDS is a build-plate refusal, not a routing failure that a
-        // cavity bridge can rescue.
-        const cavityBridgeEligible = result.error !== 'OUT_OF_BOUNDS'
-            && (result.stagnated || result.exhaustedBudget
-                || (result.error && result.error !== 'ANGLE_TOO_STEEP'));
-        if (cavityBridgeEligible) {
-            if (mesh) {
-                perfMark('hover:cavity-stick');
-                const cavityBridge = resolveCavityBridgePreview(hit, tipPos, tipNormal, modelId, mesh);
-                perfMeasureWithSpike('hover:cavity-stick', 'branch:cavity-stick');
-                if (cavityBridge) {
-                    commitPreview(cavityBridge.supportData);
-                    setPreviewError(null);
-                    setPreviewWarning(null);
-                    perfEndFrame();
-                    return;
-                }
-            }
-            // No cavity floor found — show the trunk error as fallback.
-            if (result.stagnated || result.exhaustedBudget) {
-                commitPreview(result.supportData);
-                setPreviewError(forcePlaceOverrideRef.current ? null : (result.error || null));
-                setPreviewWarning(null);
-                perfEndFrame();
-                return;
-            }
-            // For non-stagnation errors, fall through to grid placement decision
-            // (which may still place a branch or reject).
-        }
-
-        // When grid is disabled, the trunk candidate is already final — skip
-        // the grid snapping/branch logic entirely. A tip height claimed by a
-        // type that OVERRIDES the default build is the exception:
-        // decideGridPlacement owns that decision in BOTH modes (its validation
-        // also previews the rejection ghost), so those must not take this early
-        // out. Asked of the registry rather than naming the claiming type.
-        const claimedType = selectTypeForPlacement('tipHeight', tipPos.z);
-        const isOverriddenBand = !!claimedType && !!buildContactOverride(claimedType);
-        if (!isGridMode && !isOverriddenBand) {
-            commitPreview(result.supportData);
-            setPreviewError(forcePlaceOverrideRef.current ? null : (result.error || null));
-            setPreviewWarning(result.warning || null);
-            perfEndFrame();
-            return;
-        }
-
-        // ANGLE_TOO_STEEP is a hard surface rejection (shallow angle / upward
-        // face) that prevents ALL support types — trunk, branch, leaf, and
-        // stick alike.  Reject immediately instead of deferring to grid
-        // placement which would offer branches as a fallback.
-        if (result.error === 'ANGLE_TOO_STEEP') {
-            commitPreview(result.supportData);
-            setPreviewError(forcePlaceOverrideRef.current ? null : result.error);
-            setPreviewWarning(null);
-            perfEndFrame();
-            return;
-        }
-
-        perfMark('hover:grid-decision');
-        const decision = decideGridPlacement({
-            settings,
-            snapshot: getSnapshot(),
-            candidate: result,
-            tipPos,
-            tipNormal,
-            modelId,
-            mesh,
-            isPreview: true,
-        });
-        perfMeasureWithSpike('hover:grid-decision', 'grid:decision');
-
-        // Every accepted decision previews what it will place, and a rejected
-        // one previews the ghost the engine built. Neither needs to know which
-        // type is involved.
-        const previewData = decision.kind === 'place'
-            ? decision.supportData
-            : decision.trunkBuild?.supportData;
-        if (decision.kind !== 'reject' && previewData) {
-            commitPreview(previewData);
-            setPreviewError(forcePlaceOverrideRef.current ? null : (previewData.error || null));
-            setPreviewWarning(previewData.warning || null);
-            perfEndFrame();
-            return;
-        }
-
-        // reject
-        if (decision.kind === 'reject' && decision.reason === 'COLLISION_WITH_MODEL' && mesh) {
-            perfMark('hover:cavity-stick');
-            const cavityBridge = resolveCavityBridgePreview(hit, tipPos, tipNormal, modelId, mesh);
-            perfMeasureWithSpike('hover:cavity-stick', 'branch:cavity-stick');
-            if (cavityBridge) {
-                commitPreview(cavityBridge.supportData);
-                setPreviewError(null);
-                setPreviewWarning(null);
-                perfEndFrame();
-                return;
-            }
-        }
-
-        // Rejections that already built geometry (stump validation) preview
-        // the invalid support as a red ghost; the `error` on the SupportData
-        // drives the "Cannot Place Support" tooltip.
-        if (decision.kind === 'reject' && decision.supportData) {
-            commitPreview(decision.supportData);
-            setPreviewError(forcePlaceOverrideRef.current ? null : (decision.supportData.error ?? null));
-            setPreviewWarning(null);
-            perfEndFrame();
-            return;
-        }
-
-        // A rejection from the GRID engine still previews the trunk it built,
-        // so the ghost and the reason stay available.
-        if (decision.kind === 'reject' && decision.trunkBuild) {
-            commitPreview(decision.trunkBuild.supportData);
-            setPreviewError(forcePlaceOverrideRef.current ? null : (decision.trunkBuild.error || null));
-            setPreviewWarning(decision.trunkBuild.warning || null);
-            perfEndFrame();
-            return;
-        }
-
-        setPreviewData((prev) => (prev === null ? prev : null));
-        setSymmetryPreviews([]);
-        setPreviewError(forcePlaceOverrideRef.current
-            ? null
-            : decision.kind === 'reject' && decision.reason === 'KNOT_ABOVE_TIP'
-                ? 'KNOT_ABOVE_TIP'
-                : decision.kind === 'reject' && decision.reason === 'STUMP_BELOW_ROOT'
-                    ? 'STUMP_BELOW_ROOT'
-                    : decision.kind === 'reject' && decision.reason === 'COLLISION_WITH_MODEL'
-                        ? 'COLLISION_WITH_MODEL'
-                        : null
-        );
-        setPreviewWarning((prev) => (prev === null ? prev : null));
+        const copies = main.data && mesh
+            ? symmetryPlacementHits(mesh, tipPos, tipNormal)
+                .map((copyHit) => resolveHoverPreview(
+                    copyHit,
+                    { x: copyHit.point.x, y: copyHit.point.y, z: copyHit.point.z },
+                    calculateSmoothedNormal(copyHit),
+                    modelId,
+                ).data)
+                .filter((data): data is SupportData => !!data)
+                .map((data, index) => ({ ...data, id: `${data.id}:symmetry:${index}` }))
+            : [];
+        setSymmetryPreviews(copies);
         perfEndFrame();
-    }, [HOVER_MIN_INTERVAL_MS, HOVER_NORMAL_DOT_MIN, HOVER_POS_EPSILON_MM, clearPreview, isPlacementHardDisabled, resolveCavityBridgePreview]);
+    }, [HOVER_MIN_INTERVAL_MS, HOVER_NORMAL_DOT_MIN, HOVER_POS_EPSILON_MM, clearPreview, isPlacementHardDisabled, resolveHoverPreview]);
 
     useEffect(() => {
         forcePlaceOverrideRef.current = forcePlaceActive;
@@ -623,13 +622,8 @@ export function useTrunkPlacementV2() {
         });
     }, [processSupportHover]);
 
-    const onSupportClick = useCallback((hit: THREE.Intersection) => {
-        if (isPlacementHardDisabled || !hit) return;
-        // Suppress placement if a contact-disk HUD drag just ended; the
-        // mouseup that ends the drag would otherwise propagate to the canvas
-        // and be interpreted as a trunk placement click.
-        if (shouldSuppressContactDiskHudPlacementCommit()) return;
-
+    /** Place whatever a click on `hit` places. Shared by the click and its symmetry copies. */
+    const placeAtHit = useCallback((hit: THREE.Intersection) => {
         // Re-calculate smoothed normal for click
         const tipNormal = calculateSmoothedNormal(hit);
         const tipPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z };
@@ -642,7 +636,6 @@ export function useTrunkPlacementV2() {
         // node when the grid is on, and the resolver below adopts that node
         // rather than re-deriving one from a straight drop.
         const mesh = hit.object instanceof THREE.Mesh ? hit.object : undefined;
-        const modelSurface = mesh ? meshModelSurface(mesh) : undefined;
         const result = buildTrunkData({ tipPos, tipNormal, modelId, mesh });
 
         // When the trunk can't route to the build plate (stagnation, budget
@@ -665,7 +658,6 @@ export function useTrunkPlacementV2() {
                     // second choice here.
                     const bridgeEntity = markPlacementSurface(cavityBridge.kind, cavityBridge.entity, placementSurface);
                     addSupportEntityWithHistory(cavityBridge.kind, bridgeEntity);
-                    symmetrizePlacedEntity(modelSurface, cavityBridge.kind, bridgeEntity);
                     clearSupportSelection();
                     clearPreview();
                     return;
@@ -674,7 +666,7 @@ export function useTrunkPlacementV2() {
             // No cavity floor found — for stagnation/budget, bail silently.
             // For other errors (collision), let the user force-place if desired.
             if (forcePlaceOverrideRef.current && (result.stagnated || result.exhaustedBudget || result.error)) {
-                commitTrunkBuild(result, placementSurface, modelSurface);
+                commitTrunkBuild(result, placementSurface);
             }
             return;
         }
@@ -685,7 +677,7 @@ export function useTrunkPlacementV2() {
         // placement which would offer branches as a fallback.
         if (result.error === 'ANGLE_TOO_STEEP') {
             if (forcePlaceOverrideRef.current) {
-                commitTrunkBuild(result, placementSurface, modelSurface);
+                commitTrunkBuild(result, placementSurface);
             }
             return;
         }
@@ -698,7 +690,7 @@ export function useTrunkPlacementV2() {
         // the grid or a type override, the trunk candidate is final.
         if (result.error && !settings.grid?.enabled && !isOverriddenBand) {
             if (forcePlaceOverrideRef.current) {
-                commitTrunkBuild(result, placementSurface, modelSurface);
+                commitTrunkBuild(result, placementSurface);
             }
             // Stick/twig is now strict last resort: do not fallback here unless
             // the solver reported true stagnation (handled above).
@@ -753,11 +745,6 @@ export function useTrunkPlacementV2() {
                     ...(hostRepair ?? {}),
                 });
             });
-            const suppliedRoot = descriptor.edges
-                .filter((edge) => edge.to === 'roots')
-                .map((edge) => supplied[edge.field])
-                .find(Boolean) as Roots | undefined;
-            symmetrizePlacedEntity(modelSurface, typeId, entity, suppliedRoot ?? null);
             clearSupportSelection();
             clearPreview();
             return;
@@ -770,19 +757,47 @@ export function useTrunkPlacementV2() {
                     // second choice here.
                     const bridgeEntity = markPlacementSurface(cavityBridge.kind, cavityBridge.entity, placementSurface);
                     addSupportEntityWithHistory(cavityBridge.kind, bridgeEntity);
-                    symmetrizePlacedEntity(modelSurface, cavityBridge.kind, bridgeEntity);
                     clearSupportSelection();
                     clearPreview();
                     return;
                 }
             }
             if (forcePlaceOverrideRef.current && decision.trunkBuild) {
-                commitTrunkBuild(decision.trunkBuild, placementSurface, modelSurface);
+                commitTrunkBuild(decision.trunkBuild, placementSurface);
             }
             // Stick/twig is now strict last resort: keep reject behavior here.
             return;
         }
-    }, [commitTrunkBuild, clearPreview, isPlacementHardDisabled]);
+    }, [commitTrunkBuild, clearPreview]);
+
+    const onSupportClick = useCallback((hit: THREE.Intersection) => {
+        if (isPlacementHardDisabled || !hit) return;
+        // Suppress placement if a contact-disk HUD drag just ended; the
+        // mouseup that ends the drag would otherwise propagate to the canvas
+        // and be interpreted as a trunk placement click.
+        if (shouldSuppressContactDiskHudPlacementCommit()) return;
+
+        placeAtHit(hit);
+
+        // Symmetry copies: each mirrored contact point is placed exactly as a
+        // click there would be, so it routes around the model. Resolved after the
+        // original is placed so occupied points (including it) are skipped; the
+        // copies are recorded as one undo step.
+        const mesh = hit.object instanceof THREE.Mesh ? hit.object : undefined;
+        if (!mesh) return;
+        const copyHits = symmetryPlacementHits(
+            mesh,
+            { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+            calculateSmoothedNormal(hit),
+            { skipOccupied: true },
+        );
+        if (copyHits.length === 0) return;
+        const before = captureSupportEditSnapshot();
+        withSupportHistorySuppressed(() => {
+            for (const copyHit of copyHits) placeAtHit(copyHit);
+        });
+        pushSupportEditHistory(msg`Symmetry supports`, before, captureSupportEditSnapshot());
+    }, [isPlacementHardDisabled, placeAtHit]);
 
     return {
         onSupportHover,

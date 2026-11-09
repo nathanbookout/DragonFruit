@@ -679,6 +679,11 @@ export function setActivePreset(id: string | null): void {
         grid: {
             ...current.grid, // Use current, ignore preset
         },
+        // Preserve current support symmetry: it is a placement mode, not part
+        // of a sizing profile, so switching presets must not reset it.
+        symmetry: {
+            ...current.symmetry,
+        },
         // Preserve current Auto Bracing settings
         autoBracing: {
             ...current.autoBracing,

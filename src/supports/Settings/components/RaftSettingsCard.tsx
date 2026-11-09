@@ -7,6 +7,7 @@ import { useLingui } from '@lingui/react';
 import { msg } from '@lingui/core/macro';
 import { SelectDropdown } from '@/components/ui/SelectDropdown';
 import { setAnatomyPreviewActiveSettingKey } from '../AnatomyPreview/previewState';
+import { FieldHelpTooltip } from '@/components/settings/profileFormAtoms';
 
 interface RaftSettingsCardProps {
     settings: RaftSettings;
@@ -132,7 +133,13 @@ export function RaftSettingsCard({ settings, onChange, activeModelId, selectedMo
             {settings.bottomMode !== 'off' && (
                 <div className="grid grid-cols-2 gap-1.5 items-start">
                     <label className={`flex flex-col gap-0.5 ${settings.footprintMode === 'supportsAndModel' ? '' : 'col-span-2'}`}>
-                        <span className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{_(msg`Footprint`)}</span>
+                        <span className="text-[11px] font-medium inline-flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                            {_(msg`Footprint`)}
+                            <FieldHelpTooltip
+                                label={_(msg`Footprint`)}
+                                help={_(msg`What the raft is built under. Supports only: the raft covers the outline of the support bases (default). Supports + model: it also covers the model's outline projected straight down onto the plate, so a model with few or no supports still gets a raft. A model with no supports gets a raft of just its own outline.`)}
+                            />
+                        </span>
                         <SelectDropdown
                             value={settings.footprintMode ?? 'supports'}
                             onChange={(value) => onChange({ footprintMode: value as RaftSettings['footprintMode'] })}
@@ -144,8 +151,14 @@ export function RaftSettingsCard({ settings, onChange, activeModelId, selectedMo
                         />
                     </label>
                     {settings.footprintMode === 'supportsAndModel' && (
-                        <label className="flex flex-col gap-0.5" title={_(msg`How far the model's projected outline is grown about its centre before it joins the raft footprint.`)}>
-                            <span className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{_(msg`Model Margin`)}</span>
+                        <label className="flex flex-col gap-0.5">
+                            <span className="text-[11px] font-medium inline-flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                                {_(msg`Model Margin`)}
+                                <FieldHelpTooltip
+                                    label={_(msg`Model Margin`)}
+                                    help={_(msg`How much the model's projected outline (its convex hull) is enlarged, as a percentage of its size about its centre, before it is added to the raft footprint. 0% follows the outline exactly.`)}
+                                />
+                            </span>
                             <div className="relative">
                                 <NumberInput
                                     value={settings.modelFootprintMarginPct ?? 10}
@@ -158,11 +171,17 @@ export function RaftSettingsCard({ settings, onChange, activeModelId, selectedMo
                             </div>
                         </label>
                     )}
-                    <div className="col-span-2" title={_(msg`When off, the raft runs straight under a model standing on the build plate instead of being cut out around it.`)}>
-                        <ToggleButton
-                            checked={settings.raftAvoidsModel !== false}
-                            onChange={() => onChange({ raftAvoidsModel: settings.raftAvoidsModel === false })}
+                    <div className="col-span-2 flex items-center gap-1.5">
+                        <div className="flex-1 min-w-0">
+                            <ToggleButton
+                                checked={settings.raftAvoidsModel !== false}
+                                onChange={() => onChange({ raftAvoidsModel: settings.raftAvoidsModel === false })}
+                                label={_(msg`Raft Avoids Model`)}
+                            />
+                        </div>
+                        <FieldHelpTooltip
                             label={_(msg`Raft Avoids Model`)}
+                            help={_(msg`On (default): where a model sits directly on the build plate, the raft is cut away around it with a small clearance. Off: the raft runs continuously underneath, so the model is printed on top of the raft.`)}
                         />
                     </div>
 

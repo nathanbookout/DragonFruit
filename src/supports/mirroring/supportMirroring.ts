@@ -1,30 +1,21 @@
 import * as THREE from 'three';
 import {
   addRoot,
-  addSupportEntity,
   asOneSupportEdit,
   getSnapshot,
   setTrunkEditObserver,
 } from '@/supports/state';
-import { updateSupportEntity, type SupportTypeId } from '@/supports/supportTypeRegistry';
+import { updateSupportEntity } from '@/supports/supportTypeRegistry';
 import { getSupportSymmetrySettings } from '@/supports/Settings/state';
-import { captureSupportEditSnapshot, pushSupportEditHistory } from '@/supports/history/supportEditHistory';
 import { v4 as generateUuid } from 'uuid';
-import { msg } from '@lingui/core/macro';
 import type {
   BezierSegment,
-  ContactDisk,
   Joint,
-  Knot,
   Roots,
   Segment,
-  Stick,
-  Stump,
   Trunk,
-  Twig,
   Vec3,
 } from '@/supports/types';
-import type { ContactCone } from '@/supports/SupportPrimitives/ContactCone/types';
 import type { SupportData } from '@/supports/rendering/SupportBuilder';
 
 type SymmetrySettings = ReturnType<typeof getSupportSymmetrySettings>;
@@ -179,103 +170,6 @@ function createJointIdRemapper(): (id: string) => string {
   };
 }
 
-function transformSegment(segment: Segment, op: SymmetryOp, mapJointId: (id: string) => string): Segment {
-  const transformJoint = (joint: Joint | undefined): Joint | undefined => (
-    joint ? { ...joint, id: mapJointId(joint.id), pos: transformPoint(joint.pos, op.matrix) } : joint
-  );
-
-  const transformed: Segment = {
-    ...segment,
-    id: generateUuid(),
-    topJoint: transformJoint(segment.topJoint),
-    bottomJoint: transformJoint(segment.bottomJoint),
-  };
-
-  if (segment.type === 'bezier') {
-    const bezier = transformed as BezierSegment;
-    bezier.controlPoint1 = transformPoint(segment.controlPoint1, op.matrix);
-    bezier.controlPoint2 = transformPoint(segment.controlPoint2, op.matrix);
-    bezier.startTangent = transformDirection(segment.startTangent, op.normalMatrix);
-    bezier.endTangent = transformDirection(segment.endTangent, op.normalMatrix);
-  }
-
-  return transformed;
-}
-
-function transformContactCone(cone: ContactCone, op: SymmetryOp, mapJointId: (id: string) => string): ContactCone {
-  return {
-    ...cone,
-    id: generateUuid(),
-    pos: transformPoint(cone.pos, op.matrix),
-    normal: transformDirection(cone.normal, op.normalMatrix),
-    surfaceNormal: cone.surfaceNormal ? transformDirection(cone.surfaceNormal, op.normalMatrix) : cone.surfaceNormal,
-    socketJointId: cone.socketJointId ? mapJointId(cone.socketJointId) : cone.socketJointId,
-  };
-}
-
-function transformContactDisk(disk: ContactDisk, op: SymmetryOp): ContactDisk {
-  return {
-    ...disk,
-    id: generateUuid(),
-    pos: transformPoint(disk.pos, op.matrix),
-    surfaceNormal: transformDirection(disk.surfaceNormal, op.normalMatrix),
-    coneAxis: transformDirection(disk.coneAxis, op.normalMatrix),
-  };
-}
-
-function copyTrunkThroughOp(root: Roots, trunk: Trunk, op: SymmetryOp): { root: Roots; trunk: Trunk } {
-  const mapJointId = createJointIdRemapper();
-  const newRootId = generateUuid();
-  return {
-    root: {
-      ...root,
-      id: newRootId,
-      transform: { ...root.transform, pos: transformPoint(root.transform.pos, op.matrix) },
-    },
-    trunk: {
-      ...trunk,
-      id: generateUuid(),
-      rootId: newRootId,
-      segments: trunk.segments.map((segment) => transformSegment(segment, op, mapJointId)),
-      contactCone: trunk.contactCone ? transformContactCone(trunk.contactCone, op, mapJointId) : trunk.contactCone,
-    },
-  };
-}
-
-function copyStickThroughOp(stick: Stick, op: SymmetryOp): Stick {
-  const mapJointId = createJointIdRemapper();
-  return {
-    ...stick,
-    id: generateUuid(),
-    segments: stick.segments.map((segment) => transformSegment(segment, op, mapJointId)),
-    contactConeA: transformContactCone(stick.contactConeA, op, mapJointId),
-    contactConeB: transformContactCone(stick.contactConeB, op, mapJointId),
-  };
-}
-
-function copyTwigThroughOp(twig: Twig, op: SymmetryOp): Twig {
-  const mapJointId = createJointIdRemapper();
-  return {
-    ...twig,
-    id: generateUuid(),
-    segments: twig.segments.map((segment) => transformSegment(segment, op, mapJointId)),
-    contactDiskA: transformContactDisk(twig.contactDiskA, op),
-    contactDiskB: transformContactDisk(twig.contactDiskB, op),
-  };
-}
-
-function copyStumpThroughOp(anchor: Stump, op: SymmetryOp): Stump {
-  const mapJointId = createJointIdRemapper();
-  return {
-    ...anchor,
-    id: generateUuid(),
-    rootPos: transformPoint(anchor.rootPos, op.matrix),
-    joint: { ...anchor.joint, id: mapJointId(anchor.joint.id), pos: transformPoint(anchor.joint.pos, op.matrix) },
-    segments: anchor.segments.map((segment) => transformSegment(segment, op, mapJointId)),
-    contactCone: transformContactCone(anchor.contactCone, op, mapJointId),
-  };
-}
-
 function modelSupportContactPoints(modelId: string): Vec3[] {
   const snapshot = getSnapshot();
   const points: Vec3[] = [];
@@ -312,152 +206,6 @@ function symmetryOpsReachingSurface(
     if (opLeavesContactsInPlace(contactPoints, op, tolerance)) return false;
     return contactPoints.every((point) => surface.distanceToSurface(transformPoint(point, op.matrix)) <= tolerance);
   });
-}
-
-function placeSymmetryCopies(args: {
-  modelId: string;
-  surface: ModelSurface | undefined;
-  contactPoints: Vec3[];
-  addCopy: (op: SymmetryOp) => void;
-}): void {
-  const settings = getSupportSymmetrySettings();
-  if (settings.mode === 'off' || !args.surface) return;
-
-  const tolerance = Math.max(0, settings.toleranceMm);
-  const reachableOps = symmetryOpsReachingSurface(args.surface, args.contactPoints, tolerance, settings);
-  if (reachableOps.length === 0) return;
-
-  const occupiedContacts = modelSupportContactPoints(args.modelId);
-  const historyBefore = captureSupportEditSnapshot();
-  let copiedAny = false;
-
-  for (const op of reachableOps) {
-    const transformedContacts = args.contactPoints.map((point) => transformPoint(point, op.matrix));
-    const alreadyOccupied = transformedContacts.every((point) => (
-      occupiedContacts.some((existing) => distanceBetween(existing, point) <= tolerance)
-    ));
-    if (alreadyOccupied) continue;
-
-    args.addCopy(op);
-    occupiedContacts.push(...transformedContacts);
-    copiedAny = true;
-  }
-
-  if (copiedAny) {
-    pushSupportEditHistory(msg`Symmetry supports`, historyBefore, captureSupportEditSnapshot());
-  }
-}
-
-export function symmetrizePlacedTrunk(surface: ModelSurface | undefined, root: Roots, trunk: Trunk): void {
-  if (!trunk.contactCone) return;
-  placeSymmetryCopies({
-    modelId: trunk.modelId,
-    surface,
-    contactPoints: [trunk.contactCone.pos],
-    addCopy: (op) => {
-      const copy = copyTrunkThroughOp(root, trunk, op);
-      // One write: a root alone is one nothing claims, and the renderer culls those.
-      asOneSupportEdit(() => {
-        addRoot(copy.root);
-        addSupportEntity('trunk', copy.trunk);
-      });
-    },
-  });
-}
-
-export function symmetrizePlacedStick(surface: ModelSurface | undefined, stick: Stick): void {
-  placeSymmetryCopies({
-    modelId: stick.modelId,
-    surface,
-    contactPoints: [stick.contactConeA.pos, stick.contactConeB.pos],
-    addCopy: (op) => addSupportEntity('stick', copyStickThroughOp(stick, op)),
-  });
-}
-
-export function symmetrizePlacedTwig(surface: ModelSurface | undefined, twig: Twig): void {
-  placeSymmetryCopies({
-    modelId: twig.modelId,
-    surface,
-    contactPoints: [twig.contactDiskA.pos, twig.contactDiskB.pos],
-    addCopy: (op) => addSupportEntity('twig', copyTwigThroughOp(twig, op)),
-  });
-}
-
-export function symmetrizePlacedStump(surface: ModelSurface | undefined, anchor: Stump): void {
-  placeSymmetryCopies({
-    modelId: anchor.modelId,
-    surface,
-    contactPoints: [anchor.contactCone.pos],
-    addCopy: (op) => addSupportEntity('stump', copyStumpThroughOp(anchor, op)),
-  });
-}
-
-/**
- * Mirror a freshly placed support of any type. Types that hang from a knot on
- * another support (branch, leaf, brace, kickstand) have no mirrored host to
- * attach to, so only self-contained types are copied.
- */
-export function symmetrizePlacedEntity(
-  surface: ModelSurface | undefined,
-  typeId: SupportTypeId,
-  entity: unknown,
-  root?: Roots | null,
-): void {
-  if (!surface) return;
-  switch (typeId) {
-    case 'trunk': {
-      const trunk = entity as Trunk;
-      const trunkRoot = root ?? getSnapshot().roots[trunk.rootId];
-      if (trunkRoot) symmetrizePlacedTrunk(surface, trunkRoot, trunk);
-      return;
-    }
-    case 'stick':
-      symmetrizePlacedStick(surface, entity as Stick);
-      return;
-    case 'twig':
-      symmetrizePlacedTwig(surface, entity as Twig);
-      return;
-    case 'stump':
-      symmetrizePlacedStump(surface, entity as Stump);
-      return;
-    default:
-      return;
-  }
-}
-
-function supportDataContactPoints(data: SupportData): Vec3[] {
-  const points: Vec3[] = [];
-  if (data.contactCone) points.push(data.contactCone.pos);
-  data.contactCones?.forEach((cone) => points.push(cone.pos));
-  data.contactDisks?.forEach((disk) => points.push(disk.pos));
-  return points;
-}
-
-function copySupportDataThroughOp(data: SupportData, op: SymmetryOp, copyIndex: number): SupportData {
-  const mapJointId = createJointIdRemapper();
-  return {
-    ...data,
-    id: `${data.id}:symmetry:${copyIndex}`,
-    roots: data.roots
-      ? { ...data.roots, id: generateUuid(), transform: { ...data.roots.transform, pos: transformPoint(data.roots.transform.pos, op.matrix) } }
-      : data.roots,
-    segments: data.segments.map((segment) => transformSegment(segment, op, mapJointId)),
-    contactCone: data.contactCone ? transformContactCone(data.contactCone, op, mapJointId) : data.contactCone,
-    contactCones: data.contactCones?.map((cone) => transformContactCone(cone, op, mapJointId)),
-    contactDisks: data.contactDisks?.map((disk) => transformContactDisk(disk, op)),
-    knot: data.knot ? { ...data.knot, id: generateUuid(), pos: transformPoint(data.knot.pos, op.matrix) } as Knot : data.knot,
-    startPos: data.startPos ? transformPoint(data.startPos, op.matrix) : data.startPos,
-  };
-}
-
-export function buildSymmetryPreviewCopies(surface: ModelSurface | undefined, data: SupportData | null): SupportData[] {
-  if (!surface || !data) return [];
-  const settings = getSupportSymmetrySettings();
-  if (settings.mode === 'off') return [];
-
-  const tolerance = Math.max(0, settings.toleranceMm);
-  const reachableOps = symmetryOpsReachingSurface(surface, supportDataContactPoints(data), tolerance, settings);
-  return reachableOps.map((op, index) => copySupportDataThroughOp(data, op, index));
 }
 
 const symmetryPreviewListeners = new Set<() => void>();
@@ -613,8 +361,30 @@ function radialEditCenter(settings: SymmetrySettings, previous: Trunk, siblings:
 
 let propagatingTrunkEdit = false;
 
+/** Whether two trunks have the same shape, comparing numbers within `epsilon`. */
+function sameTrunkGeometry(a: Trunk, b: Trunk, epsilon = 0): boolean {
+  const fields = (trunk: Trunk) => ({ segments: trunk.segments, contactCone: trunk.contactCone ?? null, rootId: trunk.rootId });
+  const equal = (x: unknown, y: unknown): boolean => {
+    if (typeof x === 'number' && typeof y === 'number') return Math.abs(x - y) <= epsilon;
+    if (x === y) return true;
+    if (typeof x !== 'object' || typeof y !== 'object' || x === null || y === null) return false;
+    if (Array.isArray(x) !== Array.isArray(y)) return false;
+    const xr = x as Record<string, unknown>;
+    const yr = y as Record<string, unknown>;
+    // Ids differ between siblings by design; geometry is everything else.
+    const keys = new Set([...Object.keys(xr), ...Object.keys(yr)].filter((key) => key !== 'id' && key !== 'rootId'));
+    for (const key of keys) if (!equal(xr[key], yr[key])) return false;
+    return true;
+  };
+  return equal(fields(a), fields(b)) && (epsilon > 0 || a.rootId === b.rootId);
+}
+
 export function propagateTrunkEditToSymmetricTrunks(previous: Trunk, next: Trunk): void {
   if (propagatingTrunkEdit || previous.id !== next.id) return;
+  // A write that changed nothing (selection, settings normalisation) must not
+  // re-derive the siblings: float noise from the transform would turn a no-op
+  // into a recorded edit, i.e. an undo step that seems to do nothing.
+  if (sameTrunkGeometry(previous, next)) return;
 
   const settings = getSupportSymmetrySettings();
   if (settings.mode === 'off') return;
@@ -637,6 +407,7 @@ export function propagateTrunkEditToSymmetricTrunks(previous: Trunk, next: Trunk
       if (!matchingOp) continue;
 
       const edited = transformTrunkOntoTarget(next, nextRoot, sibling, siblingRoot, matchingOp);
+      if (sameTrunkGeometry(sibling, edited.trunk, 1e-6)) continue;
       asOneSupportEdit(() => {
         if (edited.root) addRoot(edited.root);
         updateSupportEntity('trunk', edited.trunk);
@@ -648,3 +419,58 @@ export function propagateTrunkEditToSymmetricTrunks(previous: Trunk, next: Trunk
 }
 
 setTrunkEditObserver(propagateTrunkEditToSymmetricTrunks);
+
+const placementRaycaster = new THREE.Raycaster();
+
+/**
+ * The surface hits a click at `tipPos` would be mirrored to under the current
+ * symmetry settings. Each is a real raycast hit on `mesh` (with its face), so a
+ * caller can run its normal hover/click pipeline on it: the copy then routes
+ * around the model like any other support, instead of being a rigid copy of the
+ * original's path.
+ *
+ * `skipOccupied` drops targets that already carry a support contact (used after
+ * the original has been placed, so it and earlier copies are not doubled).
+ */
+export function symmetryPlacementHits(
+  mesh: THREE.Mesh,
+  tipPos: Vec3,
+  tipNormal: Vec3,
+  options: { skipOccupied?: boolean } = {},
+): THREE.Intersection[] {
+  const settings = getSupportSymmetrySettings();
+  if (settings.mode === 'off') return [];
+
+  const surface = meshModelSurface(mesh);
+  const tolerance = Math.max(0, settings.toleranceMm);
+  const ops = symmetryOpsReachingSurface(surface, [tipPos], tolerance, settings);
+  if (ops.length === 0) return [];
+
+  const modelId = (mesh.userData?.modelId as string | undefined) ?? '';
+  const occupied = options.skipOccupied && modelId ? modelSupportContactPoints(modelId) : [];
+  const dedupeMm = Math.max(tolerance, 0.25);
+  const hits: THREE.Intersection[] = [];
+  const backoffMm = Math.max(2, tolerance * 4);
+
+  for (const op of ops) {
+    const target = transformPoint(tipPos, op.matrix);
+    if (occupied.some((point) => distanceBetween(point, target) <= dedupeMm)) continue;
+    if (hits.some((hit) => distanceBetween(hit.point, target) <= dedupeMm)) continue;
+
+    // Cast back onto the surface along the mirrored normal, from just outside.
+    const normal = transformDirection(tipNormal, op.normalMatrix);
+    const origin = new THREE.Vector3(target.x, target.y, target.z)
+      .addScaledVector(new THREE.Vector3(normal.x, normal.y, normal.z), backoffMm);
+    placementRaycaster.set(origin, new THREE.Vector3(-normal.x, -normal.y, -normal.z));
+    placementRaycaster.near = 0;
+    placementRaycaster.far = backoffMm * 2 + tolerance;
+    const candidates = placementRaycaster.intersectObject(mesh, false);
+    const best = candidates
+      .filter((hit) => hit.face)
+      .sort((a, b) => distanceBetween(a.point, target) - distanceBetween(b.point, target))[0];
+    if (!best || distanceBetween(best.point, target) > Math.max(tolerance, 0.5)) continue;
+    hits.push(best);
+  }
+
+  return hits;
+}
