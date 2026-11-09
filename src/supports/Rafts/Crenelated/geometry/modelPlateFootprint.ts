@@ -27,6 +27,8 @@ const BOTTOM_WINDOW_MM = 12;
 const CACHE_MAX_ENTRIES = 24;
 
 export type PlateFootprintSource = {
+  /** Model id, so a per-model raft can find its own model among the sources. */
+  id?: string;
   geometry: { geometry: THREE.BufferGeometry; center: THREE.Vector3 };
   transform: ModelTransform;
   visible?: boolean;

@@ -17,6 +17,7 @@ import { generateChamferedBeam } from '../geometry/generateChamferedBeam';
 import { generatePerimeterWall } from '../geometry/generatePerimeterWall';
 import { generateCrenelatedWallManual } from '../geometry/generateCrenelatedWallManual';
 import { collectRaftBaseCirclesByModel, fromRaftModelKey } from '../raftFootprintCircles';
+import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 type EdgeKey = string;
 
@@ -249,7 +250,12 @@ export default function LineRaftRenderer({
 
       // Footprint polygon wraps around the *outer edge* of all supports, trimmed
       // where a model stands on the plate.
-      const footprint = computeRaftFootprintPolygons({ circles, raft, clearance });
+      const footprint = computeRaftFootprintPolygons({
+        circles,
+        raft,
+        clearance,
+        model: findPlateFootprintSource(plateClearanceTargets, modelId),
+      });
       if (footprint.length === 0) continue;
       const hasBorderRing = true;
 

@@ -18,6 +18,11 @@ function normalizeRaftSettings(settings: RaftSettings): RaftSettings {
       FOOTPRINT_BORDER_MARGIN_MAX_MM,
       Math.max(0, settings.footprintBorderMargin ?? DEFAULT_RAFT_SETTINGS.footprintBorderMargin),
     ),
+    footprintMode: settings.footprintMode === 'supportsAndModel' ? 'supportsAndModel' : 'supports',
+    modelFootprintMarginPct: Math.min(
+      200,
+      Math.max(0, Number(settings.modelFootprintMarginPct ?? DEFAULT_RAFT_SETTINGS.modelFootprintMarginPct) || 0),
+    ),
   };
 }
 

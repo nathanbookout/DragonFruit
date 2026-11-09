@@ -23,6 +23,7 @@ import { filterLineRaftEdges, generateUnionedLineRaftMesh } from '@/supports/Raf
 import { generateChamferedBeam } from '@/supports/Rafts/Crenelated/geometry/generateChamferedBeam';
 import { buildLineRaftEdgePairs } from '@/supports/Rafts/Crenelated/geometry/buildLineRaftEdgePairs';
 import { SupportBaseCircle } from '@/supports/Rafts/Crenelated/RaftTypes';
+import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 export interface ExportOptions {
   filename: string;
@@ -1007,7 +1008,12 @@ export class ExportManager {
           // The raft keeps clear of any model standing on the plate, so the
           // exported solid matches the viewport (and the slice).
           const clearance = collectModelPlateFootprint(clearanceTargets, raftBandTopMm(raftSettings));
-          const parts = buildRaftFootprintMeshes({ circles, raft: raftSettings, clearance });
+          const parts = buildRaftFootprintMeshes({
+            circles,
+            raft: raftSettings,
+            clearance,
+            model: findPlateFootprintSource(clearanceTargets, modelId),
+          });
           if (!parts.baseMesh && parts.footprint.length === 0) continue;
 
           const raftGroup = new THREE.Group();

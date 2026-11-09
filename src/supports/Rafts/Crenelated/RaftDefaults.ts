@@ -13,4 +13,6 @@ export const DEFAULT_RAFT_SETTINGS: RaftSettings = {
   lineHeightMm: 0.6,
   showFootprintBorder: true, // Show footprint border by default
   footprintBorderMargin: 0.5, // max 0.05mm margin beyond raft/model edge
+  footprintMode: 'supports',
+  modelFootprintMarginPct: 10,
 };

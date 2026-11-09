@@ -1,6 +1,7 @@
 import type { RaftSettings, SupportBaseCircle } from '../RaftTypes';
 import { computeFootprint } from './computeFootprint';
-import { MODEL_PLATE_CLEARANCE_MM } from './modelPlateFootprint';
+import { MODEL_PLATE_CLEARANCE_MM, type PlateFootprintSource } from './modelPlateFootprint';
+import { raftModelFootprintCircles } from './modelHullFootprint';
 import {
   buildClearanceEdgeGrid,
   differencePolygonSets,
@@ -136,9 +137,13 @@ export function computeRaftFootprintPolygons(args: {
   raft: RaftSettings;
   clearance?: readonly PolygonWithHoles[] | null;
   samplesPerCircle?: number;
+  /** The raft's own model; its plate hull joins the footprint in `supportsAndModel` mode. */
+  model?: PlateFootprintSource | null;
 }): PolygonWithHoles[] {
-  const { circles, raft, clearance } = args;
-  if (circles.length === 0) return [];
+  const { raft, clearance } = args;
+  if (args.circles.length === 0) return [];
+  const modelCircles = raftModelFootprintCircles(raft, args.model);
+  const circles = modelCircles.length > 0 ? [...args.circles, ...modelCircles] : args.circles;
 
   const marginMm = raftDynamicMarginMm(raft);
   const samplesPerCircle = args.samplesPerCircle ?? 24;

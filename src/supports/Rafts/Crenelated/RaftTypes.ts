@@ -2,6 +2,14 @@ import * as THREE from 'three';
 
 export type RaftBottomMode = 'off' | 'solid' | 'line';
 
+/**
+ * What the raft footprint covers.
+ * - `supports`: hull of the support roots only (upstream behaviour).
+ * - `supportsAndModel`: also the model's convex hull projected onto the plate,
+ *   grown by `modelFootprintMarginPct`.
+ */
+export type RaftFootprintMode = 'supports' | 'supportsAndModel';
+
 export interface RaftSettings {
   bottomMode: RaftBottomMode;
   wallEnabled: boolean;
@@ -15,6 +23,8 @@ export interface RaftSettings {
   lineHeightMm: number;        // mm
   showFootprintBorder: boolean; // Show combined model+raft footprint border
   footprintBorderMargin: number; // mm - margin beyond raft/model edge
+  footprintMode: RaftFootprintMode;
+  modelFootprintMarginPct: number; // % the projected model hull is grown about its centroid
 }
 
 export interface RaftGeometry {

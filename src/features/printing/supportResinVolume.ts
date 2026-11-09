@@ -18,6 +18,7 @@ import type { RaftSettings, SupportBaseCircle } from '@/supports/Rafts/Crenelate
 import { calculateDiskThickness } from '@/supports/SupportPrimitives/ContactDisk/contactDiskUtils';
 import { getBezierPointAtT } from '@/supports/Curves/BezierUtils';
 import type { Segment, SupportCollections } from '@/supports/types';
+import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 export interface SupportAndRaftResinInput {
   supportState: SupportCollections;
@@ -271,7 +272,7 @@ export function computeSupportAndRaftResinMl({
       raftBandTopMm(raftSettings),
     );
 
-    for (const circles of rootsByModel.values()) {
+    for (const [modelId, circles] of rootsByModel.entries()) {
       if (circles.length === 0) continue;
 
       const thickness = raftSettings.bottomMode === 'line' ? raftSettings.lineHeightMm : raftSettings.thickness;
@@ -280,6 +281,7 @@ export function computeSupportAndRaftResinMl({
         circles,
         raft: raftSettings,
         clearance,
+        model: findPlateFootprintSource(plateModels, modelId),
       });
       if (footprint.length === 0) continue;
 

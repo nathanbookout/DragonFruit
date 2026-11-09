@@ -4502,6 +4502,7 @@ export function SceneCanvas({
     () => models
       .filter((model) => model.visible)
       .map((model) => ({
+        id: model.id,
         geometry: model.geometry,
         transform: model.transform,
       })),

@@ -33,6 +33,7 @@ import {
 } from '@/features/slicing/sliceJobAssembly';
 import { quaternionFromGlobalEuler } from '@/utils/rotation';
 import { JOINT_DIAMETER_OFFSET_MM } from '@/supports/constants';
+import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 const DEFAULT_MESH_CHUNK_TARGET_BYTES = 64 * 1024 * 1024;
 const MIN_MESH_CHUNK_TARGET_BYTES = 16 * 1024 * 1024;
@@ -1088,7 +1089,12 @@ export function buildSupportAndRaftWorldTriangles(
       if (circles.length === 0) continue;
       applyScaleOrigin(modelKey);
 
-      const parts = buildRaftFootprintMeshes({ circles, raft, clearance });
+      const parts = buildRaftFootprintMeshes({
+        circles,
+        raft,
+        clearance,
+        model: findPlateFootprintSource(plateClearanceModels, modelKey),
+      });
       if (!parts.baseMesh && parts.footprint.length === 0) continue;
 
       if (parts.baseMesh) {

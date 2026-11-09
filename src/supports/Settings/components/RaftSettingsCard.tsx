@@ -131,6 +131,34 @@ export function RaftSettingsCard({ settings, onChange, activeModelId, selectedMo
 
             {settings.bottomMode !== 'off' && (
                 <div className="grid grid-cols-2 gap-1.5 items-start">
+                    <label className={`flex flex-col gap-0.5 ${settings.footprintMode === 'supportsAndModel' ? '' : 'col-span-2'}`}>
+                        <span className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{_(msg`Footprint`)}</span>
+                        <SelectDropdown
+                            value={settings.footprintMode ?? 'supports'}
+                            onChange={(value) => onChange({ footprintMode: value as RaftSettings['footprintMode'] })}
+                            options={[
+                                { value: 'supports', label: _(msg({ message: 'Supports only', comment: 'Raft footprint mode: the raft covers only the support roots.' })) },
+                                { value: 'supportsAndModel', label: _(msg({ message: 'Supports + model', comment: 'Raft footprint mode: the raft also covers the model projected onto the build plate.' })) },
+                            ]}
+                            className="w-full min-w-0 space-y-0"
+                        />
+                    </label>
+                    {settings.footprintMode === 'supportsAndModel' && (
+                        <label className="flex flex-col gap-0.5" title={_(msg`How far the model's projected outline is grown about its centre before it joins the raft footprint.`)}>
+                            <span className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{_(msg`Model Margin`)}</span>
+                            <div className="relative">
+                                <NumberInput
+                                    value={settings.modelFootprintMarginPct ?? 10}
+                                    onChange={(val) => onChange({ modelFootprintMarginPct: val })}
+                                    step={1}
+                                    showStepper={false}
+                                    className={compactInputClass}
+                                />
+                                {unitHint('%')}
+                            </div>
+                        </label>
+                    )}
+
                     {settings.bottomMode === 'solid' && (
                         <>
                             <label className="flex flex-col gap-0.5" {...makeFocusHandlers('raft.thickness')}>

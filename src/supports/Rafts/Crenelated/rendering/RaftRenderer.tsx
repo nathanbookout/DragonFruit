@@ -12,6 +12,7 @@ import { collectModelPlateFootprint, type PlateFootprintSource } from '../geomet
 import { raftBandTopMm } from '../geometry/computeRaftFootprint';
 import { collectRaftBaseCirclesByModel, fromRaftModelKey } from '../raftFootprintCircles';
 import { noteActivity } from '@/utils/debug/heartbeatContext';
+import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 /**
  * RaftRenderer
@@ -160,7 +161,12 @@ export default function RaftRenderer({
       if (circles.length === 0) continue;
       const modelId = fromRaftModelKey(modelKey, 'unknown') ?? modelKey;
 
-      const parts = buildRaftFootprintMeshes({ circles, raft, clearance });
+      const parts = buildRaftFootprintMeshes({
+        circles,
+        raft,
+        clearance,
+        model: findPlateFootprintSource(plateClearanceTargets, modelId),
+      });
       if (!parts.baseMesh) continue;
 
       const baseMesh = parts.baseMesh;
@@ -186,7 +192,7 @@ export default function RaftRenderer({
     }
 
     return meshes;
-  }, [clearance, excludeModelId, excludedModelIdSet, modelFilterId, supportState, raft, raftOpacity, raftTransparent, ghostRenderOrder, clippingPlanes]);
+  }, [clearance, plateClearanceTargets, excludeModelId, excludedModelIdSet, modelFilterId, supportState, raft, raftOpacity, raftTransparent, ghostRenderOrder, clippingPlanes]);
 
   const handleClick = React.useCallback((e: any) => {
     if (passive) return;

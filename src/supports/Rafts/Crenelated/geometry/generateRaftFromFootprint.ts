@@ -8,6 +8,7 @@ import { insetConvexPolygon } from './insetConvexPolygon';
 import { signedArea2d } from './signedArea2d';
 import { computeRaftFootprintPolygons, raftWallBaseHeightMm } from './computeRaftFootprint';
 import type { PolygonWithHoles } from './polygonSet2d';
+import type { PlateFootprintSource } from './modelPlateFootprint';
 
 /**
  * Raft meshes from a footprint polygon set (see `computeRaftFootprint.ts`).
@@ -255,12 +256,15 @@ export function buildRaftFootprintMeshes(args: {
   circles: readonly SupportBaseCircle[];
   raft: RaftSettings;
   clearance?: readonly PolygonWithHoles[] | null;
+  /** The raft's own model, for the `supportsAndModel` footprint mode. */
+  model?: PlateFootprintSource | null;
 }): RaftFootprintMeshes {
   const { circles, raft } = args;
   const footprint = computeRaftFootprintPolygons({
     circles,
     raft,
     clearance: args.clearance,
+    model: args.model,
   });
   if (footprint.length === 0) return { footprint, baseMesh: null, wallMesh: null };
 
