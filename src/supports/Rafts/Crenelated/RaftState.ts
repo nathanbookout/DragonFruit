@@ -19,6 +19,7 @@ function normalizeRaftSettings(settings: RaftSettings): RaftSettings {
       Math.max(0, settings.footprintBorderMargin ?? DEFAULT_RAFT_SETTINGS.footprintBorderMargin),
     ),
     footprintMode: settings.footprintMode === 'supportsAndModel' ? 'supportsAndModel' : 'supports',
+    raftAvoidsModel: settings.raftAvoidsModel !== false,
     modelFootprintMarginPct: Math.min(
       200,
       Math.max(0, Number(settings.modelFootprintMarginPct ?? DEFAULT_RAFT_SETTINGS.modelFootprintMarginPct) || 0),

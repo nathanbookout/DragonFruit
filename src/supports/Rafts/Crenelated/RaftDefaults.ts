@@ -15,4 +15,5 @@ export const DEFAULT_RAFT_SETTINGS: RaftSettings = {
   footprintBorderMargin: 0.5, // max 0.05mm margin beyond raft/model edge
   footprintMode: 'supports',
   modelFootprintMarginPct: 10,
+  raftAvoidsModel: true,
 };

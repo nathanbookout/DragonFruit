@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { RaftSettings, SupportBaseCircle } from '@/supports/Rafts/Crenelated/RaftTypes';
 import { buildRaftFootprintMeshes } from '@/supports/Rafts/Crenelated/geometry/generateRaftFromFootprint';
 import type { PolygonWithHoles } from '@/supports/Rafts/Crenelated/geometry/polygonSet2d';
+import type { PlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
 
 export function buildSolidRaftPreviewMeshes(args: {
     circles: SupportBaseCircle[];
@@ -10,11 +11,14 @@ export function buildSolidRaftPreviewMeshes(args: {
     wallColor: string;
     /** Model plate footprint; the raft is trimmed where a model stands on the plate. */
     clearance?: readonly PolygonWithHoles[] | null;
+    /** The raft's own model, for the "Supports + model" footprint mode. */
+    model?: PlateFootprintSource | null;
 }): { baseMesh: THREE.Mesh; wallMesh: THREE.Mesh | null } | null {
     const parts = buildRaftFootprintMeshes({
         circles: args.circles,
         raft: args.raftSettings,
         clearance: args.clearance,
+        model: args.model,
     });
     if (!parts.baseMesh) return null;
 

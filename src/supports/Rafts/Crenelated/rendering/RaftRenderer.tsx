@@ -8,11 +8,11 @@ import { useSyncExternalStore } from 'react';
 import { subscribe, getSnapshot } from '@/supports/state';
 import { getRaftSettings, subscribeToRaftStore } from '../RaftState';
 import { buildRaftFootprintMeshes } from '../geometry/generateRaftFromFootprint';
-import { collectModelPlateFootprint, type PlateFootprintSource } from '../geometry/modelPlateFootprint';
+import { collectModelPlateFootprint, collectRaftPlateClearance, type PlateFootprintSource } from '../geometry/modelPlateFootprint';
 import { raftBandTopMm } from '../geometry/computeRaftFootprint';
 import { collectRaftBaseCirclesByModel, fromRaftModelKey } from '../raftFootprintCircles';
 import { noteActivity } from '@/utils/debug/heartbeatContext';
-import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
+import { addModelOnlyRaftGroups, findPlateFootprintSource, raftGroupHasFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 /**
  * RaftRenderer
@@ -140,7 +140,7 @@ export default function RaftRenderer({
   const clearance = React.useMemo(
     () => (raft.bottomMode === 'off'
       ? []
-      : collectModelPlateFootprint(plateClearanceTargets, raftBandTopMm(raft))),
+      : collectRaftPlateClearance(raft, plateClearanceTargets, raftBandTopMm(raft))),
     [plateClearanceTargets, raft],
   );
 
@@ -157,15 +157,23 @@ export default function RaftRenderer({
 
     const meshes: Array<{ baseMesh: THREE.Mesh; wallMesh: THREE.Mesh | null }> = [];
 
+    // "Supports + model" gives a model a raft even with no supports.
+    addModelOnlyRaftGroups(rootsByModel, raft, plateClearanceTargets, (id) => (
+      modelFilterId != null
+        ? id === modelFilterId
+        : id !== excludeModelId && !excludedModelIdSet.has(id)
+    ));
+
     for (const [modelKey, circles] of rootsByModel) {
-      if (circles.length === 0) continue;
       const modelId = fromRaftModelKey(modelKey, 'unknown') ?? modelKey;
+      const footprintModel = findPlateFootprintSource(plateClearanceTargets, modelId);
+      if (!raftGroupHasFootprintSource(circles, raft, footprintModel)) continue;
 
       const parts = buildRaftFootprintMeshes({
         circles,
         raft,
         clearance,
-        model: findPlateFootprintSource(plateClearanceTargets, modelId),
+        model: footprintModel,
       });
       if (!parts.baseMesh) continue;
 

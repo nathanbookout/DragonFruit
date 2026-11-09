@@ -141,8 +141,8 @@ export function computeRaftFootprintPolygons(args: {
   model?: PlateFootprintSource | null;
 }): PolygonWithHoles[] {
   const { raft, clearance } = args;
-  if (args.circles.length === 0) return [];
   const modelCircles = raftModelFootprintCircles(raft, args.model);
+  if (args.circles.length === 0 && modelCircles.length === 0) return [];
   const circles = modelCircles.length > 0 ? [...args.circles, ...modelCircles] : args.circles;
 
   const marginMm = raftDynamicMarginMm(raft);

@@ -25,6 +25,7 @@ export interface RaftSettings {
   footprintBorderMargin: number; // mm - margin beyond raft/model edge
   footprintMode: RaftFootprintMode;
   modelFootprintMarginPct: number; // % the projected model hull is grown about its centroid
+  raftAvoidsModel: boolean; // cut the raft out where a model stands on the plate (upstream behaviour)
 }
 
 export interface RaftGeometry {

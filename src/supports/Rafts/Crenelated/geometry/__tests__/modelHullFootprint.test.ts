@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from 'three';
 
-import type { PlateFootprintSource } from '../modelPlateFootprint';
+import { collectRaftPlateClearance, type PlateFootprintSource } from '../modelPlateFootprint';
 import { computeRaftFootprintPolygons } from '../computeRaftFootprint';
-import { modelHullFootprintCircles } from '../modelHullFootprint';
+import { addModelOnlyRaftGroups, modelHullFootprintCircles, raftModelLineNodeCircles } from '../modelHullFootprint';
 import { polygonSetAreaMm2, type PolygonWithHoles } from '../polygonSet2d';
 import { DEFAULT_RAFT_SETTINGS } from '../../RaftDefaults';
 
@@ -62,4 +62,32 @@ test('hull follows the model when it moves in X/Y', () => {
   model.transform.position.x += 15;
   const after = modelHullFootprintCircles(model, 0);
   assert.ok(Math.abs(Math.min(...after.map((c) => c.x)) - (Math.min(...before.map((c) => c.x)) + 15)) < 1e-6);
+});
+
+test('supports + model builds a footprint for a model with no supports', () => {
+  const model = liftedBox();
+  const raft = { ...DEFAULT_RAFT_SETTINGS, footprintMode: 'supportsAndModel' as const, modelFootprintMarginPct: 10 };
+
+  assert.equal(computeRaftFootprintPolygons({ circles: [], raft: DEFAULT_RAFT_SETTINGS, model }).length, 0);
+  const footprint = computeRaftFootprintPolygons({ circles: [], raft, model });
+  assert.ok(footprint.length > 0);
+  assert.ok(polygonSetAreaMm2(footprint) > 22 * 11);
+
+  const groups = new Map<string, unknown[]>();
+  addModelOnlyRaftGroups(groups, raft, [model]);
+  assert.deepEqual([...groups.keys()], ['box']);
+  addModelOnlyRaftGroups(groups, DEFAULT_RAFT_SETTINGS, [{ ...model, id: 'other' }]);
+  assert.ok(!groups.has('other'), 'supports-only mode adds no model-only groups');
+
+  assert.ok(raftModelLineNodeCircles(raft, model).length >= 8, 'line mode gets beam nodes around the hull');
+});
+
+test('raft avoids model can be switched off', () => {
+  // A box standing on the plate.
+  const standing: PlateFootprintSource = {
+    geometry: { geometry: new THREE.BoxGeometry(10, 10, 10), center: new THREE.Vector3(0, 0, 0) },
+    transform: { position: new THREE.Vector3(0, 0, 5), rotation: new THREE.Euler(0, 0, 0), scale: new THREE.Vector3(1, 1, 1) },
+  };
+  assert.ok(collectRaftPlateClearance(DEFAULT_RAFT_SETTINGS, [standing], 1).length > 0);
+  assert.equal(collectRaftPlateClearance({ ...DEFAULT_RAFT_SETTINGS, raftAvoidsModel: false }, [standing], 1).length, 0);
 });

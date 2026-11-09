@@ -9,7 +9,7 @@ import { subscribe, getSnapshot } from '@/supports/state';
 import { getRaftSettings, subscribeToRaftStore } from '../RaftState';
 import { convexHull2d } from '../geometry/convexHull2d';
 import { computeRaftFootprintPolygons, inflateModelPlateClearance, raftBandTopMm, raftWallBaseHeightMm } from '../geometry/computeRaftFootprint';
-import { collectModelPlateFootprint, type PlateFootprintSource } from '../geometry/modelPlateFootprint';
+import { collectModelPlateFootprint, collectRaftPlateClearance, type PlateFootprintSource } from '../geometry/modelPlateFootprint';
 import { generateWallFromPolygons, isUntrimmedFootprint } from '../geometry/generateRaftFromFootprint';
 import { buildLineRaftEdgePairs } from '../geometry/buildLineRaftEdgePairs';
 import { filterLineRaftEdges, generateUnionedLineRaftMesh } from '../geometry/generateUnionedLineRaftMesh';
@@ -17,7 +17,7 @@ import { generateChamferedBeam } from '../geometry/generateChamferedBeam';
 import { generatePerimeterWall } from '../geometry/generatePerimeterWall';
 import { generateCrenelatedWallManual } from '../geometry/generateCrenelatedWallManual';
 import { collectRaftBaseCirclesByModel, fromRaftModelKey } from '../raftFootprintCircles';
-import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
+import { addModelOnlyRaftGroups, findPlateFootprintSource, raftGroupHasFootprintSource, raftModelLineNodeCircles } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 type EdgeKey = string;
 
@@ -240,13 +240,22 @@ export default function LineRaftRenderer({
     });
 
     const meshes: Array<{ beamMeshes: THREE.Mesh[]; wallMesh: THREE.Mesh | null }> = [];
-    const clearance = collectModelPlateFootprint(plateClearanceTargets, raftBandTopMm(raft));
+    const clearance = collectRaftPlateClearance(raft, plateClearanceTargets, raftBandTopMm(raft));
     const clearanceCut = inflateModelPlateClearance(clearance);
 
+    // "Supports + model" gives a model a raft even with no supports.
+    addModelOnlyRaftGroups(rootsByModel, raft, plateClearanceTargets, (id) => (
+      modelFilterId != null
+        ? id === modelFilterId
+        : id !== excludeModelId && !excludedModelIdSet.has(id)
+    ));
+
     for (const [modelKey, circles] of rootsByModel) {
-      if (circles.length === 0) continue;
       const modelId = fromRaftModelKey(modelKey, 'unknown') ?? modelKey;
-      const nodes2d = circles.map((circle) => new THREE.Vector2(circle.x, circle.y));
+      const footprintModel = findPlateFootprintSource(plateClearanceTargets, modelId);
+      if (!raftGroupHasFootprintSource(circles, raft, footprintModel)) continue;
+      const nodes2d = [...circles, ...raftModelLineNodeCircles(raft, footprintModel)]
+        .map((circle) => new THREE.Vector2(circle.x, circle.y));
 
       // Footprint polygon wraps around the *outer edge* of all supports, trimmed
       // where a model stands on the plate.
@@ -254,7 +263,7 @@ export default function LineRaftRenderer({
         circles,
         raft,
         clearance,
-        model: findPlateFootprintSource(plateClearanceTargets, modelId),
+        model: footprintModel,
       });
       if (footprint.length === 0) continue;
       const hasBorderRing = true;

@@ -21,6 +21,7 @@ import {
 } from './Rafts/Crenelated/raftFootprintCircles';
 import { collectModelPlateFootprint, type PlateFootprintSource } from './Rafts/Crenelated/geometry/modelPlateFootprint';
 import { raftBandTopMm } from './Rafts/Crenelated/geometry/computeRaftFootprint';
+import { addModelOnlyRaftGroups, findPlateFootprintSource } from './Rafts/Crenelated/geometry/modelHullFootprint';
 import type { PolygonWithHoles } from './Rafts/Crenelated/geometry/polygonSet2d';
 
 interface RaftProxyMeshLayerProps {
@@ -54,6 +55,8 @@ interface RaftProxyMeshLayerProps {
 }
 
 const EMPTY_PLATE_CLEARANCE_TARGETS: readonly PlateFootprintSource[] = Object.freeze([]);
+const EMPTY_CLEARANCE: PolygonWithHoles[] = [];
+const EMPTY_MODEL_SOURCE_REFS: readonly unknown[] = Object.freeze([]);
 
 /**
  * Give a raft proxy geometry a bounds tree.
@@ -91,6 +94,8 @@ type RaftProxyCacheEntry = {
   raftSignature: string;
   /** The model clearance the meshes were cut with, by identity. */
   clearance: readonly PolygonWithHoles[];
+  /** Model geometry/transform refs, in "Supports + model" mode only (the hull follows the model). */
+  modelSourceRefs: readonly unknown[];
   geometriesByModel: Map<string, CachedRaftGeometry>;
 };
 
@@ -162,6 +167,9 @@ function buildRaftSignature(raft: RaftSettings): string {
     raft.crenulationSpacing,
     raft.lineWidthMm,
     raft.lineHeightMm,
+    raft.footprintMode,
+    raft.modelFootprintMarginPct,
+    raft.raftAvoidsModel ? 1 : 0,
   ].join('|');
 }
 
@@ -301,10 +309,16 @@ export function RaftProxyMeshLayer({
   const hasSelectedModels = selectedModelIdSet.size > 0;
   const raftSignature = React.useMemo(() => buildRaftSignature(raft), [raft]);
   const clearance = React.useMemo(
-    () => (raft.bottomMode === 'off'
-      ? []
+    () => (raft.bottomMode === 'off' || raft.raftAvoidsModel === false
+      ? EMPTY_CLEARANCE
       : clearanceFor(plateClearanceTargets, raftBandTopMm(raft))),
     [plateClearanceTargets, raft],
+  );
+  const modelSourceRefs = React.useMemo<readonly unknown[]>(
+    () => (raft.footprintMode === 'supportsAndModel'
+      ? plateClearanceTargets.flatMap((source) => [source.id, source.geometry, source.transform])
+      : EMPTY_MODEL_SOURCE_REFS),
+    [plateClearanceTargets, raft.footprintMode],
   );
 
   const geometriesByModel = React.useMemo(() => {
@@ -313,6 +327,7 @@ export function RaftProxyMeshLayer({
       && sameRaftFootprintSource(raftProxyCache.footprintSourceRefs, footprintSourceRefs)
       && raftProxyCache.raftSignature === raftSignature
       && raftProxyCache.clearance === clearance
+      && sameRaftFootprintSource(raftProxyCache.modelSourceRefs, modelSourceRefs)
     ) {
       return raftProxyCache.geometriesByModel;
     }
@@ -320,6 +335,8 @@ export function RaftProxyMeshLayer({
     const rootCirclesByModel = collectRaftBaseCirclesByModel(supportState, {
       fallbackModelKey: RAFT_UNASSIGNED_MODEL_KEY,
     });
+    // "Supports + model" gives a model a raft even with no supports.
+    addModelOnlyRaftGroups(rootCirclesByModel, raft, plateClearanceTargets);
     const next = new Map<string, CachedRaftGeometry>();
 
     if (raft.bottomMode === 'solid') {
@@ -330,6 +347,7 @@ export function RaftProxyMeshLayer({
           baseColor: RAFT_BASE_COLOR,
           wallColor: RAFT_BASE_COLOR,
           clearance,
+          model: findPlateFootprintSource(plateClearanceTargets, fromModelKey(modelKey)),
         });
         if (!solid) continue;
 
@@ -354,6 +372,7 @@ export function RaftProxyMeshLayer({
           beamColor: RAFT_BASE_COLOR,
           wallColor: RAFT_BASE_COLOR,
           clearance,
+          model: findPlateFootprintSource(plateClearanceTargets, fromModelKey(modelKey)),
         });
         if (!line) continue;
 
@@ -383,13 +402,14 @@ export function RaftProxyMeshLayer({
 
     raftProxyCache = {
       footprintSourceRefs,
+      modelSourceRefs,
       raftSignature,
       clearance,
       geometriesByModel: next,
     };
 
     return next;
-  }, [clearance, raft, raftSignature, supportState, footprintSourceRefs]);
+  }, [clearance, modelSourceRefs, plateClearanceTargets, raft, raftSignature, supportState, footprintSourceRefs]);
 
   const visibleEntries = React.useMemo<VisibleRaftEntry[]>(() => {
     const entries: VisibleRaftEntry[] = [];

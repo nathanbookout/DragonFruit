@@ -13,7 +13,7 @@ import { getSnapshot as getSupportSnapshot } from '@/supports/state';
 import { SUPPORT_TYPES } from '@/supports/supportTypeRegistry';
 import { getRaftSettings } from '@/supports/Rafts/Crenelated/RaftState';
 import { buildRaftFootprintMeshes } from '@/supports/Rafts/Crenelated/geometry/generateRaftFromFootprint';
-import { collectModelPlateFootprint, type PlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
+import { collectModelPlateFootprint, collectRaftPlateClearance, type PlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
 import { inflateModelPlateClearance, raftBandTopMm } from '@/supports/Rafts/Crenelated/geometry/computeRaftFootprint';
 import { filterLineRaftEdges, generateUnionedLineRaftMesh } from '@/supports/Rafts/Crenelated/geometry/generateUnionedLineRaftMesh';
 import { generateChamferedBeam } from '@/supports/Rafts/Crenelated/geometry/generateChamferedBeam';
@@ -33,7 +33,7 @@ import {
 } from '@/features/slicing/sliceJobAssembly';
 import { quaternionFromGlobalEuler } from '@/utils/rotation';
 import { JOINT_DIAMETER_OFFSET_MM } from '@/supports/constants';
-import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
+import { addModelOnlyRaftGroups, findPlateFootprintSource, raftGroupHasFootprintSource, raftModelLineNodeCircles } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 const DEFAULT_MESH_CHUNK_TARGET_BYTES = 64 * 1024 * 1024;
 const MIN_MESH_CHUNK_TARGET_BYTES = 16 * 1024 * 1024;
@@ -1079,28 +1079,34 @@ export function buildSupportAndRaftWorldTriangles(
 
     // A model standing on the plate keeps the sliced raft out of itself, exactly
     // as the viewport does — preview and print must not disagree.
-    const clearance = collectModelPlateFootprint(
+    const clearance = collectRaftPlateClearance(
+      raft,
       plateClearanceModels,
       raftBandTopMm(raft),
     );
     const clearanceCut = inflateModelPlateClearance(clearance);
 
+    // "Supports + model" gives a model a raft even with no supports.
+    addModelOnlyRaftGroups(rootsByModel, raft, plateClearanceModels, (id) => visibleModelIds.has(id));
+
     for (const [modelKey, circles] of rootsByModel.entries()) {
-      if (circles.length === 0) continue;
+      const footprintModel = findPlateFootprintSource(plateClearanceModels, modelKey);
+      if (!raftGroupHasFootprintSource(circles, raft, footprintModel)) continue;
       applyScaleOrigin(modelKey);
 
       const parts = buildRaftFootprintMeshes({
         circles,
         raft,
         clearance,
-        model: findPlateFootprintSource(plateClearanceModels, modelKey),
+        model: footprintModel,
       });
       if (!parts.baseMesh && parts.footprint.length === 0) continue;
 
       if (parts.baseMesh) {
         appendGeometryTriangles(sink, parts.baseMesh.geometry);
       } else if (raft.bottomMode === 'line') {
-        const nodes2d = circles.map((c) => new THREE.Vector2(c.x, c.y));
+        const nodes2d = [...circles, ...raftModelLineNodeCircles(raft, footprintModel)]
+          .map((c) => new THREE.Vector2(c.x, c.y));
         const hasBorderRing = parts.footprint.length > 0;
         const edgePairs = buildLineRaftEdgePairs(nodes2d, {
           hasBorderRing,

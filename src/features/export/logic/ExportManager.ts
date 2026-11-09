@@ -17,13 +17,13 @@ import { getSnapshot } from '@/supports/state';
 import { SUPPORT_COLLECTION_KEYS } from '@/supports/supportTypeRegistry';
 import { getRaftSettings, getRaftSettingsForModel } from '@/supports/Rafts/Crenelated/RaftState';
 import { buildRaftFootprintMeshes } from '@/supports/Rafts/Crenelated/geometry/generateRaftFromFootprint';
-import { collectModelPlateFootprint } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
+import { collectModelPlateFootprint, collectRaftPlateClearance } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
 import { inflateModelPlateClearance, raftBandTopMm } from '@/supports/Rafts/Crenelated/geometry/computeRaftFootprint';
 import { filterLineRaftEdges, generateUnionedLineRaftMesh } from '@/supports/Rafts/Crenelated/geometry/generateUnionedLineRaftMesh';
 import { generateChamferedBeam } from '@/supports/Rafts/Crenelated/geometry/generateChamferedBeam';
 import { buildLineRaftEdgePairs } from '@/supports/Rafts/Crenelated/geometry/buildLineRaftEdgePairs';
 import { SupportBaseCircle } from '@/supports/Rafts/Crenelated/RaftTypes';
-import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
+import { addModelOnlyRaftGroups, findPlateFootprintSource, raftGroupHasFootprintSource, raftModelLineNodeCircles } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 export interface ExportOptions {
   filename: string;
@@ -992,12 +992,22 @@ export class ExportManager {
 
         const clearanceTargets = (sceneContext?.models ?? []).filter((model) => model.visible);
 
-        for (const [modelKey, roots] of rootsByModel) {
-          if (roots.length === 0) continue;
+        // "Supports + model" gives a model a raft even with no supports. Each
+        // model is checked against its own (possibly per-model) raft settings.
+        addModelOnlyRaftGroups(
+          rootsByModel,
+          { footprintMode: 'supportsAndModel' },
+          clearanceTargets,
+          (id) => (!hasScopedModelFilter || scopedModelIds.has(id))
+            && getRaftSettingsForModel(id).footprintMode === 'supportsAndModel',
+        );
 
+        for (const [modelKey, roots] of rootsByModel) {
           // Use per-model raft settings if available, otherwise use global settings
           const modelId = modelKey === '__orphan__' ? null : modelKey;
           const raftSettings = modelId ? getRaftSettingsForModel(modelId) : globalRaftSettings;
+          const footprintModel = findPlateFootprintSource(clearanceTargets, modelId);
+          if (!raftGroupHasFootprintSource(roots, raftSettings, footprintModel)) continue;
 
           const circles: SupportBaseCircle[] = roots.map(r => ({
             x: r.transform.pos.x,
@@ -1007,12 +1017,12 @@ export class ExportManager {
 
           // The raft keeps clear of any model standing on the plate, so the
           // exported solid matches the viewport (and the slice).
-          const clearance = collectModelPlateFootprint(clearanceTargets, raftBandTopMm(raftSettings));
+          const clearance = collectRaftPlateClearance(raftSettings, clearanceTargets, raftBandTopMm(raftSettings));
           const parts = buildRaftFootprintMeshes({
             circles,
             raft: raftSettings,
             clearance,
-            model: findPlateFootprintSource(clearanceTargets, modelId),
+            model: footprintModel,
           });
           if (!parts.baseMesh && parts.footprint.length === 0) continue;
 
@@ -1022,7 +1032,10 @@ export class ExportManager {
           if (parts.baseMesh) raftGroup.add(parts.baseMesh);
 
           if (raftSettings.bottomMode === 'line') {
-            const nodes2d = roots.map((r) => new THREE.Vector2(r.transform.pos.x, r.transform.pos.y));
+            const nodes2d = [
+              ...roots.map((r) => new THREE.Vector2(r.transform.pos.x, r.transform.pos.y)),
+              ...raftModelLineNodeCircles(raftSettings, footprintModel).map((c) => new THREE.Vector2(c.x, c.y)),
+            ];
             const hasBorderRing = parts.footprint.length > 0;
             const edgePairs = buildLineRaftEdgePairs(nodes2d, {
               hasBorderRing,

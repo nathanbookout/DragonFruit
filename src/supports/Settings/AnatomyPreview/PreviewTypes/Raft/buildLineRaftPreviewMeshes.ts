@@ -8,6 +8,8 @@ import { generateWallFromPolygons, isUntrimmedFootprint } from '@/supports/Rafts
 import { generatePerimeterWall } from '@/supports/Rafts/Crenelated/geometry/generatePerimeterWall';
 import { generateCrenelatedWallManual } from '@/supports/Rafts/Crenelated/geometry/generateCrenelatedWallManual';
 import type { PolygonWithHoles } from '@/supports/Rafts/Crenelated/geometry/polygonSet2d';
+import type { PlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
+import { raftModelLineNodeCircles } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 export function buildLineRaftPreviewMeshes(args: {
     circles: SupportBaseCircle[];
@@ -16,14 +18,18 @@ export function buildLineRaftPreviewMeshes(args: {
     wallColor: string;
     /** Model plate footprint; beams are cut where a model stands on the plate. */
     clearance?: readonly PolygonWithHoles[] | null;
+    /** The raft's own model, for the "Supports + model" footprint mode. */
+    model?: PlateFootprintSource | null;
 }): { beamMeshes: THREE.Mesh[]; borderMesh: THREE.Mesh | null; wallMesh: THREE.Mesh | null } | null {
-    const nodes2d = args.circles.map((c) => new THREE.Vector2(c.x, c.y));
+    const nodes2d = [...args.circles, ...raftModelLineNodeCircles(args.raftSettings, args.model)]
+        .map((c) => new THREE.Vector2(c.x, c.y));
     if (nodes2d.length === 0) return null;
 
     const footprint = computeRaftFootprintPolygons({
         circles: args.circles,
         raft: args.raftSettings,
         clearance: args.clearance,
+        model: args.model,
     });
     if (footprint.length === 0) return null;
 

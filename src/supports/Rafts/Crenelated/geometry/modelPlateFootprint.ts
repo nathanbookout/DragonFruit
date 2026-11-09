@@ -394,3 +394,17 @@ export function collectModelPlateFootprint(
   if (sets.length === 0) return [];
   return sets.length === 1 ? sets : unionPolygonSets(sets);
 }
+
+/**
+ * The plate footprint a raft has to stay clear of, or nothing when the raft is
+ * set not to avoid models (`raftAvoidsModel: false`): then the raft runs
+ * straight under a model standing on the plate, with no cutout.
+ */
+export function collectRaftPlateClearance(
+  raft: { raftAvoidsModel?: boolean },
+  sources: readonly PlateFootprintSource[],
+  bandTopMm: number,
+): PolygonWithHoles[] {
+  if (raft.raftAvoidsModel === false) return [];
+  return collectModelPlateFootprint(sources, bandTopMm);
+}

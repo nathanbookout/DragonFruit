@@ -157,3 +157,65 @@ export function findPlateFootprintSource(
   if (!sources || !modelId) return null;
   return sources.find((source) => source.id === modelId) ?? null;
 }
+
+/**
+ * In `supportsAndModel` mode a model needs a raft even with no supports: add an
+ * empty root group for every in-scope model that has none, so the per-model raft
+ * loops visit it and build the footprint from the model hull alone.
+ */
+export function addModelOnlyRaftGroups<T>(
+  byModel: Map<string, T[]>,
+  raft: Pick<RaftSettings, 'footprintMode'>,
+  sources: readonly PlateFootprintSource[] | null | undefined,
+  includeModel: (modelId: string) => boolean = () => true,
+): void {
+  if (raft.footprintMode !== 'supportsAndModel' || !sources) return;
+  for (const source of sources) {
+    if (!source.id || source.visible === false || byModel.has(source.id)) continue;
+    if (!includeModel(source.id)) continue;
+    byModel.set(source.id, []);
+  }
+}
+
+/** Whether a raft group should be built: it has roots, or the model hull alone gives it a footprint. */
+export function raftGroupHasFootprintSource(
+  circles: readonly unknown[],
+  raft: Pick<RaftSettings, 'footprintMode'>,
+  model: PlateFootprintSource | null | undefined,
+): boolean {
+  return circles.length > 0 || (raft.footprintMode === 'supportsAndModel' && !!model && model.visible !== false);
+}
+
+const LINE_NODE_SPACING_MM = 5;
+
+/**
+ * Beam nodes for a line raft in `supportsAndModel` mode: the grown model hull
+ * resampled roughly every 5 mm, so the beam network spans the model's area and
+ * not just its supports. Empty in `supports` mode.
+ */
+export function raftModelLineNodeCircles(
+  raft: Pick<RaftSettings, 'footprintMode' | 'modelFootprintMarginPct'>,
+  model: PlateFootprintSource | null | undefined,
+): SupportBaseCircle[] {
+  const hull = raftModelFootprintCircles(raft, model);
+  if (hull.length < 3) return [];
+  const nodes: SupportBaseCircle[] = [];
+  for (let i = 0; i < hull.length; i += 1) {
+    const a = hull[i];
+    const b = hull[(i + 1) % hull.length];
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    const steps = Math.max(1, Math.ceil(length / LINE_NODE_SPACING_MM));
+    for (let s = 0; s < steps; s += 1) {
+      const t = s / steps;
+      nodes.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, r: 0 });
+    }
+  }
+  // Collapse nodes closer than a millimetre (dense hull corners).
+  const kept: SupportBaseCircle[] = [];
+  for (const node of nodes) {
+    const last = kept[kept.length - 1];
+    if (last && Math.hypot(node.x - last.x, node.y - last.y) < 1) continue;
+    kept.push(node);
+  }
+  return kept;
+}

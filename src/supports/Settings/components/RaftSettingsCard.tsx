@@ -158,6 +158,13 @@ export function RaftSettingsCard({ settings, onChange, activeModelId, selectedMo
                             </div>
                         </label>
                     )}
+                    <div className="col-span-2" title={_(msg`When off, the raft runs straight under a model standing on the build plate instead of being cut out around it.`)}>
+                        <ToggleButton
+                            checked={settings.raftAvoidsModel !== false}
+                            onChange={() => onChange({ raftAvoidsModel: settings.raftAvoidsModel === false })}
+                            label={_(msg`Raft Avoids Model`)}
+                        />
+                    </div>
 
                     {settings.bottomMode === 'solid' && (
                         <>

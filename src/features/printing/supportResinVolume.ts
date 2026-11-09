@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { contactEndpointsFor, SUPPORT_TYPES, type SupportCollectionKey, type SupportTypeId } from '@/supports/supportTypeRegistry';
 import { resolveSegmentEndpoints, type ShaftEntity } from '@/supports/SupportPrimitives/Knot/segmentEndpoints';
 import { computeRaftFootprintPolygons, raftBandTopMm } from '@/supports/Rafts/Crenelated/geometry/computeRaftFootprint';
-import { collectModelPlateFootprint, type PlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
+import { collectModelPlateFootprint, collectRaftPlateClearance, type PlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
 import { isUntrimmedFootprint } from '@/supports/Rafts/Crenelated/geometry/generateRaftFromFootprint';
 import { polygonSetAreaMm2 } from '@/supports/Rafts/Crenelated/geometry/polygonSet2d';
 import { computeRaftOuterBoundary } from '@/supports/Rafts/Crenelated/geometry/computeRaftOuterBoundary';
@@ -18,7 +18,7 @@ import type { RaftSettings, SupportBaseCircle } from '@/supports/Rafts/Crenelate
 import { calculateDiskThickness } from '@/supports/SupportPrimitives/ContactDisk/contactDiskUtils';
 import { getBezierPointAtT } from '@/supports/Curves/BezierUtils';
 import type { Segment, SupportCollections } from '@/supports/types';
-import { findPlateFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
+import { addModelOnlyRaftGroups, findPlateFootprintSource, raftGroupHasFootprintSource } from '@/supports/Rafts/Crenelated/geometry/modelHullFootprint';
 
 export interface SupportAndRaftResinInput {
   supportState: SupportCollections;
@@ -267,13 +267,18 @@ export function computeSupportAndRaftResinMl({
 
     // The raft is trimmed where a model stands on the plate, so the estimate
     // measures the same footprint the viewport and the slicer build.
-    const clearance = collectModelPlateFootprint(
+    const clearance = collectRaftPlateClearance(
+      raftSettings,
       plateModels,
       raftBandTopMm(raftSettings),
     );
 
+    // "Supports + model" gives a model a raft even with no supports.
+    addModelOnlyRaftGroups(rootsByModel, raftSettings, plateModels, (id) => visibleModelIds.has(id));
+
     for (const [modelId, circles] of rootsByModel.entries()) {
-      if (circles.length === 0) continue;
+      const footprintModel = findPlateFootprintSource(plateModels, modelId);
+      if (!raftGroupHasFootprintSource(circles, raftSettings, footprintModel)) continue;
 
       const thickness = raftSettings.bottomMode === 'line' ? raftSettings.lineHeightMm : raftSettings.thickness;
 
@@ -281,7 +286,7 @@ export function computeSupportAndRaftResinMl({
         circles,
         raft: raftSettings,
         clearance,
-        model: findPlateFootprintSource(plateModels, modelId),
+        model: footprintModel,
       });
       if (footprint.length === 0) continue;
 
