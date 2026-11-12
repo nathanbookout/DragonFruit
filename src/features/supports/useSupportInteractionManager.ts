@@ -8,6 +8,7 @@ import { useLeafPlacement } from '@/supports/SupportTypes/Leaf/useLeafPlacement'
 import { useBracePlacement } from '@/supports/SupportTypes/Brace/useBracePlacement';
 import { useKickstandPlacement } from '@/supports/SupportTypes/Kickstand/useKickstandPlacement';
 import { isContactDiskHudInteractionActive } from '@/supports/SupportPrimitives/ContactDisk/contactDiskHudInteraction';
+import { isWholeSupportMoveActive, shouldSuppressPlacementAfterWholeSupportMove } from '@/supports/interaction/wholeSupportMove';
 import { isSupportEditInteractionActive } from '@/supports/interaction/gizmoInteractionLock';
 import { useInteractionStatus } from '@/supports/interaction/useInteractionStatus';
 import { useJointCreationHotkey } from '@/supports/SupportPrimitives/Joint/useJointCreationHotkey';
@@ -141,6 +142,10 @@ export function useSupportInteractionManager({ mode }: SupportInteractionOptions
 
   // Handler for MODEL hover (used for trunk placement preview, or branch tip preview)
   const onModelHover = useCallback((hit: THREE.Intersection | null) => {
+    // A whole-support move drives the placement preview itself; the regular
+    // hover (null over other supports) would clear it under the drag.
+    if (isWholeSupportMoveActive()) return;
+
     if (isSupportEditInteractionActive()) {
       dispatchModelHover('none', null);
       return;
@@ -185,6 +190,11 @@ export function useSupportInteractionManager({ mode }: SupportInteractionOptions
   // Handler for MODEL click (trunk placement, or branch tip placement)
   const onModelClick = useCallback((hit: THREE.Intersection) => {
     if (isSupportEditInteractionActive()) {
+      return;
+    }
+
+    // The release that ends a whole-support move lands on the model as a click.
+    if (shouldSuppressPlacementAfterWholeSupportMove()) {
       return;
     }
 

@@ -2,7 +2,7 @@ import { useContactDiskDragSession } from '../useContactDiskDragSession';
 import { updateSupportEntity } from '../../supportTypeRegistry';
 import { registerSupportDetailRenderer } from '../../detailRenderer/seam';
 import React from 'react';
-import { useThree } from '@react-three/fiber';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Trunk, Roots, type Vec3 } from '../../types';
 import type { ContactCone } from '../../SupportPrimitives/ContactCone/types';
@@ -19,6 +19,7 @@ import { selectPrimitiveById } from '../../interaction/shared/selection/selectio
 import { useHighlight } from '../../interaction/useHighlight';
 import { usePartDragUpdate } from '../../interaction/partDragPreview';
 import { getSnapshot } from '../../state';
+import { beginWholeSupportMove } from '../../interaction/wholeSupportMove';
 
 interface TrunkRendererProps {
     trunk: Trunk;
@@ -41,7 +42,7 @@ interface TrunkRendererProps {
 }
 
 export const TrunkRenderer = React.memo(function TrunkRenderer({ trunk: baseTrunk, root, isSelected, selectedId, dimNonSelected, isHovered: propHovered, suppressHover, isInteractable = true, deferStraightShaftsToSceneBatch = false, deferInteractionToSceneBatch = false, deferRootsToSceneBatch = false, deferContactConesToSceneBatch = false, hidePlateContactPrimitives = false, baseColor = '#ff8800', hoverColor, selectedColor = '#80fffd', onContactDiskHudHoverChange }: TrunkRendererProps) {
-    const { camera, scene, gl } = useThree();
+    const { camera, scene, gl, controls } = useThree();
     const highDetailPrimitiveSegments = 24;
     const lowDetailPrimitiveSegments = 8;
     const useLowDetailPrimitives = !isSelected && !propHovered;
@@ -105,6 +106,16 @@ export const TrunkRenderer = React.memo(function TrunkRenderer({ trunk: baseTrun
             },
         });
     }, [camera, gl.domElement, isSelected, scene, tipDrag, trunk.contactCone, trunk.id, trunk.modelId]);
+
+    // Press-and-drag on the tip of the selected trunk moves the whole support.
+    const handleTipBodyPointerDown = React.useCallback((e: ThreeEvent<PointerEvent>) => beginWholeSupportMove({
+        trunkId: trunk.id,
+        event: e,
+        camera,
+        domElement: gl.domElement,
+        scene,
+        controls: controls as { enabled?: boolean } | null,
+    }), [camera, controls, gl.domElement, scene, trunk.id]);
 
     const handleContactDiskHudPointerUp = React.useCallback(() => {
         tipDrag.stop();
@@ -269,6 +280,7 @@ export const TrunkRenderer = React.memo(function TrunkRenderer({ trunk: baseTrun
                 onDiskHudHoverChange={onContactDiskHudHoverChange}
                 onDiskHudPointerDown={handleContactDiskHudPointerDown}
                 onDiskHudPointerUp={handleContactDiskHudPointerUp}
+                onTipBodyPointerDown={handleTipBodyPointerDown}
             />
         );
     }

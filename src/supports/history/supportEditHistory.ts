@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from '@lingui/core';
-import { pushSupportHistory } from '@/supports/history/supportHistory';
+import { isSupportHistorySuppressed, pushSupportHistory } from '@/supports/history/supportHistory';
 import { SUPPORT_EDIT_REPLACE } from './actionTypes';
 import { SUPPORT_COLLECTION_KEYS } from '../supportTypeRegistry';
 import { getSnapshot, type SupportState } from '../state';
@@ -90,6 +90,8 @@ export function pushSupportEditHistory(
   before: SupportEditHistorySnapshot,
   after: SupportEditHistorySnapshot,
 ) {
+  // Checked when queued, not when flushed: the flush runs after the block ends.
+  if (isSupportHistorySuppressed()) return;
   if (!changedAnything(before.support, after.support)) return;
 
   pendingJobs.push({

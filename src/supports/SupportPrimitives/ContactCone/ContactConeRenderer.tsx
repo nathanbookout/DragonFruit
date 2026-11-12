@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import * as THREE from 'three';
+import type { ThreeEvent } from '@react-three/fiber';
 import { usePicking } from '@/components/picking';
 import { Vec3 } from '../../types';
 import { SupportTipProfile, DEFAULT_TIP_PROFILE } from './types';
@@ -13,6 +14,7 @@ import { useJointDragPosition } from '../../interaction/jointDragPosition';
 
 // Primitives
 import { ContactDiskRenderer, calculateDiskThickness } from '../ContactDisk';
+import { isPrimaryPointerPress } from '../ContactDisk/contactDiskDragController';
 import { isSupportEditInteractionActive } from '../../interaction/gizmoInteractionLock';
 import { useDraggedSupport, usePrimitiveDragSuppressed } from '../../instanced/dragSuppression';
 import { subscribeToProfileStore, getProfileStoreSnapshot, getProfileStoreServerSnapshot, getActiveMaterialProfile, getActivePrinterProfile } from '@/features/profiles/profileStore';
@@ -45,6 +47,12 @@ interface ContactConeRendererProps {
     onDiskHudHoverChange?: (hovered: boolean) => void;
     onDiskHudPointerDown?: (e: any) => void;
     onDiskHudPointerUp?: (e: any) => void;
+    /**
+     * Press on the tip (cone, ball or disk) of a selected support whose tip is
+     * not itself selected. Returns true when it took the press (a whole-support
+     * move began), which stops the press here.
+     */
+    onTipBodyPointerDown?: (e: ThreeEvent<PointerEvent>) => boolean;
 }
 
 /**
@@ -79,6 +87,7 @@ export function ContactConeRenderer({
     onDiskHudHoverChange,
     onDiskHudPointerDown,
     onDiskHudPointerUp,
+    onTipBodyPointerDown,
     isContactDiskSelected = false,
 }: ContactConeRendererProps) {
     const groupRef = React.useRef<any>(null);
@@ -211,6 +220,12 @@ export function ContactConeRenderer({
     const displayEmissive = hoverVisible ? '#efd8c2' : emissive;
     const displayEmissiveIntensity = hoverVisible ? Math.max(emissiveIntensity, 0.16) : emissiveIntensity;
 
+    const handleTipBodyPointerDown = React.useCallback((e: ThreeEvent<PointerEvent>) => {
+        if (!onTipBodyPointerDown || !isInteractable || !isParentSelected || isContactDiskSelected) return;
+        if (!isPrimaryPointerPress(e)) return;
+        if (onTipBodyPointerDown(e)) e.stopPropagation();
+    }, [isContactDiskSelected, isInteractable, isParentSelected, onTipBodyPointerDown]);
+
     const handleConeClick = (e: any) => {
         const intersections = Array.isArray(e?.intersections) ? e.intersections : [];
         for (const intersection of intersections) {
@@ -338,6 +353,7 @@ export function ContactConeRenderer({
                     onHudHoverChange={onDiskHudHoverChange}
                     onHudPointerDown={onDiskHudPointerDown}
                     onHudPointerUp={onDiskHudPointerUp}
+                    onBodyPointerDown={handleTipBodyPointerDown}
                 />
             )}
 
@@ -346,7 +362,7 @@ export function ContactConeRenderer({
                 position={[center.x, center.y, center.z]}
                 quaternion={quaternion}
             >
-                <mesh raycast={raycast} onClick={handleConeClick} onPointerMove={handleConePointerMove} onPointerOut={handleConePointerOut}>
+                <mesh raycast={raycast} onClick={handleConeClick} onPointerDown={handleTipBodyPointerDown} onPointerMove={handleConePointerMove} onPointerOut={handleConePointerOut}>
                     {/* CylinderGeometry: radiusTop, radiusBottom, height, radialSegments */}
                     {/* Top = contact (small), Bottom = socket (large) in Y-up space */}
                     {/* After rotation, "top" faces the model */}
@@ -365,7 +381,7 @@ export function ContactConeRenderer({
             {/* --- Cone Tip Sphere (The Ball Joint at the Disk) --- */}
             {/* Renders at coneStartPos, size = contactRadius */}
             <group position={[coneStartPos.x, coneStartPos.y, coneStartPos.z]}>
-                <mesh raycast={raycast} onClick={handleConeClick} onPointerMove={handleConePointerMove} onPointerOut={handleConePointerOut}>
+                <mesh raycast={raycast} onClick={handleConeClick} onPointerDown={handleTipBodyPointerDown} onPointerMove={handleConePointerMove} onPointerOut={handleConePointerOut}>
                     <sphereGeometry args={[contactRadius, sphereSegments, Math.max(6, Math.floor(sphereSegments * 0.75))]} />
                     <meshStandardMaterial
                         color={finalBodyColor}

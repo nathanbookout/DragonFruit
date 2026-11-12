@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
+import type { ThreeEvent } from '@react-three/fiber';
 import { usePicking } from '@/components/picking';
 import { Vec3 } from '../../types';
 import { ContactDiskProfile } from '../ContactCone/types';
@@ -33,6 +34,8 @@ interface ContactDiskRendererProps {
     isContactDiskSelected?: boolean;
     onHudHoverChange?: (hovered: boolean) => void;
     onHudPointerDown?: (e: any) => void;
+    /** Press on the disk itself (not its HUD ring). */
+    onBodyPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
     onHudPointerUp?: (e: any) => void;
 }
 
@@ -56,6 +59,7 @@ export function ContactDiskRenderer({
     isContactDiskSelected = false,
     onHudHoverChange,
     onHudPointerDown,
+    onBodyPointerDown,
     onHudPointerUp,
 }: ContactDiskRendererProps) {
     const groupRef = React.useRef<any>(null);
@@ -241,7 +245,7 @@ export function ContactDiskRenderer({
                     />
                 </group>
             ) : null}
-            <mesh position={[0, -effectivePenetration / 2, 0]} raycast={raycast} onClick={handleClick} onPointerMove={handlePointerMove} onPointerOut={handlePointerOut}>
+            <mesh position={[0, -effectivePenetration / 2, 0]} raycast={raycast} onClick={handleClick} onPointerDown={onBodyPointerDown} onPointerMove={handlePointerMove} onPointerOut={handlePointerOut}>
                 {/*
                   Extend the disk into the model without moving the cone-side connection.
                   We keep the cone-side "top" aligned by:
@@ -263,7 +267,7 @@ export function ContactDiskRenderer({
             </mesh>
 
             {/* Round Tip: stays exactly where it was (cone side alignment) */}
-            <mesh position={[0, thickness / 2, 0]} raycast={raycast} onClick={handleClick} onPointerMove={handlePointerMove} onPointerOut={handlePointerOut}>
+            <mesh position={[0, thickness / 2, 0]} raycast={raycast} onClick={handleClick} onPointerDown={onBodyPointerDown} onPointerMove={handlePointerMove} onPointerOut={handlePointerOut}>
                 <sphereGeometry args={[radius, sphereSegments, Math.max(6, Math.floor(sphereSegments * 0.75))]} />
                 <meshStandardMaterial
                     color={displayColor}

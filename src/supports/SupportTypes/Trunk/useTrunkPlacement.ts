@@ -20,6 +20,7 @@ import { setSymmetryPreviews, symmetryPlacementHits } from '../../mirroring/supp
 import { captureSupportEditSnapshot, pushSupportEditHistory } from '../../history/supportEditHistory';
 import { withSupportHistorySuppressed } from '../../history/supportHistory';
 import { msg } from '@lingui/core/macro';
+import { registerWholeSupportPlacer } from '../../interaction/wholeSupportMove';
 
 import { isShaftBlocked } from '../../PlacementLogic/CollisionAvoidance';
 
@@ -770,6 +771,33 @@ export function useTrunkPlacementV2() {
         }
     }, [commitTrunkBuild, clearPreview]);
 
+    /**
+     * Place at `hit` plus its symmetry copies. Each mirrored contact point is
+     * placed exactly as a click there would be, so it routes around the model.
+     * Copies are resolved after the original is placed so occupied points
+     * (including it) are skipped. A symmetric placement is recorded as ONE undo
+     * step covering the original and every copy.
+     */
+    const placeWithSymmetry = useCallback((hit: THREE.Intersection) => {
+        const mesh = hit.object instanceof THREE.Mesh ? hit.object : undefined;
+        const tipPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z };
+        const tipNormal = calculateSmoothedNormal(hit);
+        // No copy can land (symmetry off, or no op reaches the surface): a plain
+        // placement keeps its own typed history entry and label.
+        if (!mesh || symmetryPlacementHits(mesh, tipPos, tipNormal).length === 0) {
+            placeAtHit(hit);
+            return;
+        }
+
+        const before = captureSupportEditSnapshot();
+        withSupportHistorySuppressed(() => {
+            placeAtHit(hit);
+            const copyHits = symmetryPlacementHits(mesh, tipPos, tipNormal, { skipOccupied: true });
+            for (const copyHit of copyHits) placeAtHit(copyHit);
+        });
+        pushSupportEditHistory(msg`Symmetry supports`, before, captureSupportEditSnapshot());
+    }, [placeAtHit]);
+
     const onSupportClick = useCallback((hit: THREE.Intersection) => {
         if (isPlacementHardDisabled || !hit) return;
         // Suppress placement if a contact-disk HUD drag just ended; the
@@ -777,27 +805,19 @@ export function useTrunkPlacementV2() {
         // and be interpreted as a trunk placement click.
         if (shouldSuppressContactDiskHudPlacementCommit()) return;
 
-        placeAtHit(hit);
+        placeWithSymmetry(hit);
+    }, [isPlacementHardDisabled, placeWithSymmetry]);
 
-        // Symmetry copies: each mirrored contact point is placed exactly as a
-        // click there would be, so it routes around the model. Resolved after the
-        // original is placed so occupied points (including it) are skipped; the
-        // copies are recorded as one undo step.
-        const mesh = hit.object instanceof THREE.Mesh ? hit.object : undefined;
-        if (!mesh) return;
-        const copyHits = symmetryPlacementHits(
-            mesh,
-            { x: hit.point.x, y: hit.point.y, z: hit.point.z },
-            calculateSmoothedNormal(hit),
-            { skipOccupied: true },
-        );
-        if (copyHits.length === 0) return;
-        const before = captureSupportEditSnapshot();
-        withSupportHistorySuppressed(() => {
-            for (const copyHit of copyHits) placeAtHit(copyHit);
-        });
-        pushSupportEditHistory(msg`Symmetry supports`, before, captureSupportEditSnapshot());
-    }, [isPlacementHardDisabled, placeAtHit]);
+    // The whole-support move drives this same pipeline: the hover preview while
+    // dragging (already frame-throttled by the move), and a symmetric placement
+    // when it lands (the move suppresses its history and records its own).
+    useEffect(() => registerWholeSupportPlacer({
+        preview: (hit) => {
+            if (hit) processSupportHover(hit);
+            else clearPreview();
+        },
+        place: placeWithSymmetry,
+    }), [clearPreview, processSupportHover, placeWithSymmetry]);
 
     return {
         onSupportHover,

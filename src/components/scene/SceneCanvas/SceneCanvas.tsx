@@ -59,6 +59,7 @@ import { PLACEMENT_CONTROLLERS, PLACEMENT_CONTROLLER_TYPES } from '@/supports/pl
 import { clearSupportSelection } from '@/supports/interaction/shared/selection/selectionController';
 import { isSupportTargetHoverCategory } from '@/supports/interaction/shared/hover/supportHoverResolver';
 import { useSceneHoveredSupportId } from '@/supports/interaction/shared/hover/sceneHoverStore';
+import { isWholeSupportMoveActive, subscribeWholeSupportMoveActive } from '@/supports/interaction/wholeSupportMove';
 import {
   BRANCH_FAMILY_PLACEMENT_OWNER,
   isPlacementActiveForType,
@@ -1036,6 +1037,11 @@ export function SceneCanvas({
   );
   const isLinux = useIsLinux();
   const sceneHoveredSupportId = useSceneHoveredSupportId();
+  const wholeSupportMoveActive = React.useSyncExternalStore(
+    subscribeWholeSupportMoveActive,
+    isWholeSupportMoveActive,
+    () => false,
+  );
   const [contactDiskHudInteractionActive, setContactDiskHudInteractionActive] = React.useState(() => isContactDiskHudInteractionActive());
 
   // Sync clip bounds to the module-level store so BranchPlacementController
@@ -2395,8 +2401,11 @@ export function SceneCanvas({
   // (it's the snap target). The support-hover and scene-hover suppression
   // conditions only apply outside placement mode. Contact-disk HUD
   // interaction still overrides because it's a different gesture entirely.
+  // A whole-support move is a placement too: it drags across other supports,
+  // and their hover must not hide where the moved one will land.
+  const placementIntentActive = supportCreationModeActive || wholeSupportMoveActive;
   const suppressSupportPlacementPreviewRendering = contactDiskHudInteractionActive
-    || (!supportCreationModeActive && (supportHoverTargetActive || sceneHoveredSupportId !== null));
+    || (!placementIntentActive && (supportHoverTargetActive || sceneHoveredSupportId !== null));
 
   // The guide plane Z has to follow the cursor exactly, so it never rides in
   // React state: a deadband in Z (the old 0.02 mm one) steps the line by

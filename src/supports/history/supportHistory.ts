@@ -10,11 +10,16 @@ const supportHistory = createTypedHistory<SupportHistoryPayloadMap>(SUPPORT_HIST
  * drift from the handler that inverts it.
  */
 export const pushSupportHistory: typeof supportHistory.push = (...args) => {
-    if (supportHistorySuppressionDepth > 0) return;
+    if (isSupportHistorySuppressed()) return;
     return supportHistory.push(...args);
 };
 
 let supportHistorySuppressionDepth = 0;
+
+/** Whether a `withSupportHistorySuppressed` block is running. */
+export function isSupportHistorySuppressed(): boolean {
+    return supportHistorySuppressionDepth > 0;
+}
 
 /**
  * Run `apply` without recording support history entries, so a caller can record

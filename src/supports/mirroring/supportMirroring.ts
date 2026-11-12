@@ -420,6 +420,38 @@ export function propagateTrunkEditToSymmetricTrunks(previous: Trunk, next: Trunk
 
 setTrunkEditObserver(propagateTrunkEditToSymmetricTrunks);
 
+/**
+ * The trunks symmetry placed alongside `trunkId`: those whose contact point sits
+ * where a symmetry op maps this trunk's contact. Matched on the contact only,
+ * because each copy is routed on its own and its shaft need not mirror this one.
+ */
+export function symmetricSiblingTrunkIds(trunkId: string, mesh: THREE.Mesh): string[] {
+  const settings = getSupportSymmetrySettings();
+  if (settings.mode === 'off') return [];
+
+  const snapshot = getSnapshot();
+  const trunk = snapshot.trunks[trunkId];
+  if (!trunk?.contactCone) return [];
+
+  const tolerance = Math.max(0, settings.toleranceMm);
+  const matchMm = Math.max(tolerance, 0.5);
+  const ops = symmetryOpsReachingSurface(meshModelSurface(mesh), [trunk.contactCone.pos], tolerance, settings);
+  const candidates = Object.values(snapshot.trunks)
+    .filter((other) => other.id !== trunkId && other.modelId === trunk.modelId && !!other.contactCone);
+
+  const ids = new Set<string>();
+  for (const op of ops) {
+    const target = transformPoint(trunk.contactCone.pos, op.matrix);
+    let best: { id: string; distance: number } | null = null;
+    for (const other of candidates) {
+      const distance = distanceBetween(other.contactCone!.pos, target);
+      if (distance <= matchMm && (!best || distance < best.distance)) best = { id: other.id, distance };
+    }
+    if (best) ids.add(best.id);
+  }
+  return [...ids];
+}
+
 const placementRaycaster = new THREE.Raycaster();
 
 /**
