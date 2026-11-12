@@ -15,7 +15,7 @@ import { allocateMeshStagePath, exportMeshFile, pickSavePathWithNativeDialog, wr
 import { info as logInfo } from '@tauri-apps/plugin-log';
 import { getSnapshot } from '@/supports/state';
 import { SUPPORT_COLLECTION_KEYS } from '@/supports/supportTypeRegistry';
-import { getRaftSettings, getRaftSettingsForModel } from '@/supports/Rafts/Crenelated/RaftState';
+import { getRaftSettings, getRaftSettingsForModel, VOXL_RAFT_SETTINGS_EXTENSION } from '@/supports/Rafts/Crenelated/RaftState';
 import { buildRaftFootprintMeshes } from '@/supports/Rafts/Crenelated/geometry/generateRaftFromFootprint';
 import { collectModelPlateFootprint, collectRaftPlateClearance } from '@/supports/Rafts/Crenelated/geometry/modelPlateFootprint';
 import { inflateModelPlateClearance, raftBandTopMm } from '@/supports/Rafts/Crenelated/geometry/computeRaftFootprint';
@@ -1441,6 +1441,9 @@ export class ExportManager {
       ...(sceneMaterials.length > 0 ? { materials: sceneMaterials } : {}),
       extensions: {
         ...voxlExtensions,
+        // The raft settings are scene state: without them a reopened scene
+        // falls back to the import defaults (e.g. its wall comes back on).
+        [VOXL_RAFT_SETTINGS_EXTENSION]: { ...getRaftSettings() },
         ...(sceneContext?.plateOrdering
           ? { [VOXL_PLATE_ORDERING_EXTENSION]: sceneContext.plateOrdering }
           : {}),

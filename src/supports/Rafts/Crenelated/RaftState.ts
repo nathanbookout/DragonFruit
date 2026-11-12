@@ -1,4 +1,4 @@
-import { RaftSettings } from './RaftTypes';
+import { isRaftBottomMode, RaftSettings } from './RaftTypes';
 import { DEFAULT_RAFT_SETTINGS } from './RaftDefaults';
 
 let currentRaftSettings: RaftSettings = { ...DEFAULT_RAFT_SETTINGS };
@@ -14,6 +14,7 @@ const FOOTPRINT_BORDER_MARGIN_MAX_MM = 0.05;
 function normalizeRaftSettings(settings: RaftSettings): RaftSettings {
   return {
     ...settings,
+    bottomMode: isRaftBottomMode(settings.bottomMode) ? settings.bottomMode : DEFAULT_RAFT_SETTINGS.bottomMode,
     footprintBorderMargin: Math.min(
       FOOTPRINT_BORDER_MARGIN_MAX_MM,
       Math.max(0, settings.footprintBorderMargin ?? DEFAULT_RAFT_SETTINGS.footprintBorderMargin),
@@ -97,6 +98,30 @@ export function applyImportDefaultRaftSettings(settings: RaftSettings): void {
   currentRaftSettings = resolveRaftSettings({ ...DEFAULT_RAFT_SETTINGS, ...settings }, true);
   // Don't set wasManuallyModifiedInSession = true here to allow manual changes to take priority
   notify();
+}
+
+/** `.voxl` extension key under which a scene stores its raft settings. */
+export const VOXL_RAFT_SETTINGS_EXTENSION = 'raftSettings';
+
+/**
+ * Read raft settings saved in a scene file. Only keys that exist in the
+ * defaults with a matching type are taken; anything missing falls back to the
+ * default. Returns null when the value carries no usable settings, so callers
+ * can fall back to the import defaults (scenes saved before this existed).
+ */
+export function readSavedRaftSettings(raw: unknown): RaftSettings | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const result: Record<string, unknown> = { ...DEFAULT_RAFT_SETTINGS };
+  let found = 0;
+  for (const [key, fallback] of Object.entries(DEFAULT_RAFT_SETTINGS)) {
+    const value = source[key];
+    if (typeof value !== typeof fallback) continue;
+    if (typeof value === 'number' && !Number.isFinite(value)) continue;
+    result[key] = value;
+    found += 1;
+  }
+  return found === 0 ? null : result as unknown as RaftSettings;
 }
 
 export function subscribeToRaftStore(listener: RaftStoreListener): () => void {

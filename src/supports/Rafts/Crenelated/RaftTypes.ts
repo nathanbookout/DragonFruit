@@ -2,6 +2,10 @@ import * as THREE from 'three';
 
 export type RaftBottomMode = 'off' | 'solid' | 'line';
 
+export function isRaftBottomMode(value: unknown): value is RaftBottomMode {
+  return value === 'off' || value === 'solid' || value === 'line';
+}
+
 /**
  * What the raft footprint covers.
  * - `supports`: hull of the support roots only (upstream behaviour).

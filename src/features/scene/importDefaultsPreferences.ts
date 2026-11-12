@@ -1,4 +1,4 @@
-import type { RaftBottomMode, RaftSettings } from '@/supports/Rafts/Crenelated/RaftTypes';
+import { isRaftBottomMode, type RaftBottomMode, type RaftSettings } from '@/supports/Rafts/Crenelated/RaftTypes';
 import type { DragonfruitImportFormat, Trunk } from '@/supports/types';
 import { hasWindow } from '@/utils/dom';
 
@@ -19,10 +19,6 @@ export const DEFAULT_IMPORT_DEFAULTS_SETTINGS: ImportDefaultsSettings = {
   autoRepair: false,
   autoRepairScenes: false,
 };
-
-function isRaftBottomMode(value: unknown): value is RaftBottomMode {
-  return value === 'off' || value === 'solid' || value === 'line';
-}
 
 export function normalizeImportDefaultsSettings(value: unknown): ImportDefaultsSettings {
   if (!value || typeof value !== 'object') {

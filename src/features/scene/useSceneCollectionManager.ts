@@ -1448,7 +1448,7 @@ import {
   type SupportClipboardPayload,
 } from '@/supports/PlacementLogic/supportClipboard';
 import { clearSupportSelection } from '@/supports/interaction/shared/selection/selectionController';
-import { getRaftSettings, updateRaftSettings, applyImportDefaultRaftSettings, resetRaftSessionModificationFlag } from '@/supports/Rafts/Crenelated/RaftState';
+import { getRaftSettings, applyImportDefaultRaftSettings, readSavedRaftSettings, setRaftSettings, VOXL_RAFT_SETTINGS_EXTENSION } from '@/supports/Rafts/Crenelated/RaftState';
 import { computeFootprint } from '@/supports/Rafts/Crenelated/geometry/computeFootprint';
 import { computeRaftOuterBoundary } from '@/supports/Rafts/Crenelated/geometry/computeRaftOuterBoundary';
 import type { SupportBaseCircle } from '@/supports/Rafts/Crenelated/RaftTypes';
@@ -7568,9 +7568,23 @@ export function useSceneCollectionManager(options?: {
         }
       }
 
-      if (voxlSupportsContainData(document)) {
-        const remappedSupports = remapModelIdsInPayload(document.supports, idMap);
+      const sceneHasSupports = voxlSupportsContainData(document);
+      // A scene that saved its raft settings gets them back; older scenes
+      // (no saved settings) fall back to the import defaults as before. A scene
+      // without supports still has a raft when it builds one from the model
+      // alone ('supportsAndModel'), so its settings come back too.
+      const savedRaftSettings = readSavedRaftSettings(document.extensions?.[VOXL_RAFT_SETTINGS_EXTENSION]);
+      if (savedRaftSettings && (sceneHasSupports || savedRaftSettings.footprintMode === 'supportsAndModel')) {
+        // The scene's own choices count as deliberate (setRaftSettings marks
+        // them so), so the Support sidebar won't swap in its last-used
+        // localStorage settings when it mounts.
+        setRaftSettings(savedRaftSettings);
+      } else if (sceneHasSupports) {
         applyImportDefaultsToRaftState();
+      }
+
+      if (sceneHasSupports) {
+        const remappedSupports = remapModelIdsInPayload(document.supports, idMap);
         mergeFromImportFormat(remappedSupports);
 
         for (const imported of importedModels) {
